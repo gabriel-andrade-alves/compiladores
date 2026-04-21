@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <fstream>
 
 #define YYSTYPE atributos
 
@@ -24,6 +25,9 @@ string getempcode();
 %start S
 
 %left '+'
+%left '-'
+%left '*' '/'
+
 
 
 %%
@@ -32,6 +36,7 @@ S           :COMANDOS
             {
                 cout << "#include <stdio.h>\n" << "int main(){\n" + 
                 $1.traducao + "\treturn 0;\n}" << endl;
+
             }
 
 COMANDOS    : COM COMANDOS
@@ -49,11 +54,30 @@ E           : E '+' E
 			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
 				" + " + $3.label + ";\n";
             }
+            | E '-' E
+            {
+                $$.label = getempcode();
+			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
+				" - " + $3.label + ";\n";
+            }
+            | E '*' E
+            {
+                $$.label = getempcode();
+			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
+				" * " + $3.label + ";\n";
+            }
+            | E '/' E
+            {
+                $$.label = getempcode();
+			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
+				" / " + $3.label + ";\n";
+            }
             | TK_NUM 
             {
                 $$.label = getempcode();
                 $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
             }
+             
 
 
 
@@ -66,6 +90,8 @@ string getempcode(){
 	var_temp_qnt++;
 	return "t" + std::to_string(var_temp_qnt);
 }
+
+
 
 int main( int argc, char* argv[] )
 {
