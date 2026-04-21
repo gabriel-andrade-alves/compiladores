@@ -1,0 +1,84 @@
+%{
+#include <iostream>
+#include <string>
+#include <sstream>
+
+#define YYSTYPE atributos
+
+using namespace std;
+int var_temp_qnt;
+
+struct atributos
+{
+	string label;
+	string traducao;
+};
+
+int yylex(void);
+void yyerror(string);
+string getempcode();
+%}
+
+%token TK_NUM
+
+%start S
+
+%left '+'
+
+
+%%
+
+S           :COMANDOS  
+            {
+                cout << "#include <stdio.h>\n" << "int main(){\n" + 
+                $1.traducao + "\treturn 0;\n}" << endl;
+            }
+
+COMANDOS    : COM COMANDOS
+            {
+                $$.traducao = $1.traducao + $2.traducao;
+            }
+            | {$$.traducao = "";}
+
+COM         : E ';'
+            ;
+
+E           : E '+' E
+            {
+                $$.label = getempcode();
+			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
+				" + " + $3.label + ";\n";
+            }
+            | TK_NUM 
+            {
+                $$.label = getempcode();
+                $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+            }
+
+
+
+%%
+
+#include "lex.yy.c"
+
+
+string getempcode(){
+	var_temp_qnt++;
+	return "t" + std::to_string(var_temp_qnt);
+}
+
+int main( int argc, char* argv[] )
+{
+
+	var_temp_qnt = 0;
+    
+    yyparse();
+
+	return 0;
+}
+
+void yyerror( string MSG )
+{
+	cout << MSG << endl;
+	exit (0);
+}				
