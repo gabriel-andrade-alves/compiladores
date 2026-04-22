@@ -48,7 +48,12 @@ COMANDOS    : COM COMANDOS
 COM         : E ';'
             ;
 
-E           : E '+' E
+E           : '(' E ')'
+            {
+                $$.label = $2.label;
+                $$.traducao = $2.traducao;
+            }
+            | E '+' E
             {
                 $$.label = getempcode();
 			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
