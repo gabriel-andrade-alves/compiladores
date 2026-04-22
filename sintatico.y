@@ -21,7 +21,8 @@ string getempcode();
 string declaracoes();
 %}
 
-%token TK_NUM
+%token TK_NUM 
+%token TK_ID
 
 %start S
 
@@ -34,7 +35,7 @@ string declaracoes();
 
 S           :COMANDOS  
             {
-                cout << "#include <stdio.h>\n" << "int main(){\n" + declaracoes() +
+                cout << "#include <stdio.h>\n" << "int main(){\n" + declaracoes() + "\n" +
                 $1.traducao + "\treturn 0;\n}" << endl;
 
             }
@@ -77,7 +78,16 @@ E           : '(' E ')'
 			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
 				" / " + $3.label + ";\n";
             }
+			| TK_ID '=' E
+			{
+				$$.traducao = $1.traducao + $3.traducao + "\t" + $1.label + " = " + $3.label + ";\n";
+			}
             | TK_NUM 
+            {
+                $$.label = getempcode();
+                $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+            }
+            | TK_ID
             {
                 $$.label = getempcode();
                 $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
