@@ -88,8 +88,9 @@ struct atributos
 int yylex(void);
 void yyerror(string);
 string getempcode();
+string declaracoes();
 
-#line 93 "y.tab.c"
+#line 94 "y.tab.c"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -504,7 +505,7 @@ union yyalloc
 /* YYFINAL -- State number of the termination state.  */
 #define YYFINAL  6
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   16
+#define YYLAST   13
 
 /* YYNTOKENS -- Number of terminals.  */
 #define YYNTOKENS  9
@@ -604,8 +605,8 @@ yysymbol_name (yysymbol_kind_t yysymbol)
    STATE-NUM.  */
 static const yytype_int8 yypact[] =
 {
-      11,    -5,    15,    -5,    11,    -4,    -5,    -5,    11,    11,
-      11,    11,    -5,     4,     6,    -5,    -5
+       8,    -5,    12,    -5,     8,    -4,    -5,    -5,     8,     8,
+       8,     8,    -5,     3,     3,    -5,    -5
 };
 
 /* YYDEFACT[STATE-NUM] -- Default reduction number in state STATE-NUM.
@@ -620,7 +621,7 @@ static const yytype_int8 yydefact[] =
 /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-      -5,    -5,    12,    -5,    -3
+      -5,    -5,     9,    -5,    -3
 };
 
 /* YYDEFGOTO[NTERM-NUM].  */
@@ -634,14 +635,14 @@ static const yytype_int8 yydefgoto[] =
    number is the opposite.  If YYTABLE_NINF, syntax error.  */
 static const yytype_int8 yytable[] =
 {
-       8,     9,    10,    11,    12,    13,    14,    15,    16,     9,
-      10,    11,    10,    11,     1,     6,     7
+       8,     9,    10,    11,    12,    13,    14,    15,    16,    10,
+      11,     1,     6,     7
 };
 
 static const yytype_int8 yycheck[] =
 {
-       4,     5,     6,     7,     8,     8,     9,    10,    11,     5,
-       6,     7,     6,     7,     3,     0,     4
+       4,     5,     6,     7,     8,     8,     9,    10,    11,     6,
+       7,     3,     0,     4
 };
 
 /* YYSTOS[STATE-NUM] -- The symbol kind of the accessing symbol of
@@ -1129,11 +1130,11 @@ yyreduce:
   case 2: /* S: COMANDOS  */
 #line 36 "sintatico.y"
             {
-                cout << "#include <stdio.h>\n" << "int main(){\n" + 
+                cout << "#include <stdio.h>\n" << "int main(){\n" + declaracoes() +
                 yyvsp[0].traducao + "\treturn 0;\n}" << endl;
 
             }
-#line 1137 "y.tab.c"
+#line 1138 "y.tab.c"
     break;
 
   case 3: /* COMANDOS: COM COMANDOS  */
@@ -1141,13 +1142,13 @@ yyreduce:
             {
                 yyval.traducao = yyvsp[-1].traducao + yyvsp[0].traducao;
             }
-#line 1145 "y.tab.c"
+#line 1146 "y.tab.c"
     break;
 
   case 4: /* COMANDOS: %empty  */
 #line 46 "sintatico.y"
               {yyval.traducao = "";}
-#line 1151 "y.tab.c"
+#line 1152 "y.tab.c"
     break;
 
   case 6: /* E: E '+' E  */
@@ -1157,7 +1158,7 @@ yyreduce:
 			    yyval.traducao = yyvsp[-2].traducao + yyvsp[0].traducao + "\t" + yyval.label + " = " + yyvsp[-2].label +
 				" + " + yyvsp[0].label + ";\n";
             }
-#line 1161 "y.tab.c"
+#line 1162 "y.tab.c"
     break;
 
   case 7: /* E: E '-' E  */
@@ -1167,7 +1168,7 @@ yyreduce:
 			    yyval.traducao = yyvsp[-2].traducao + yyvsp[0].traducao + "\t" + yyval.label + " = " + yyvsp[-2].label +
 				" - " + yyvsp[0].label + ";\n";
             }
-#line 1171 "y.tab.c"
+#line 1172 "y.tab.c"
     break;
 
   case 8: /* E: E '*' E  */
@@ -1177,7 +1178,7 @@ yyreduce:
 			    yyval.traducao = yyvsp[-2].traducao + yyvsp[0].traducao + "\t" + yyval.label + " = " + yyvsp[-2].label +
 				" * " + yyvsp[0].label + ";\n";
             }
-#line 1181 "y.tab.c"
+#line 1182 "y.tab.c"
     break;
 
   case 9: /* E: E '/' E  */
@@ -1187,7 +1188,7 @@ yyreduce:
 			    yyval.traducao = yyvsp[-2].traducao + yyvsp[0].traducao + "\t" + yyval.label + " = " + yyvsp[-2].label +
 				" / " + yyvsp[0].label + ";\n";
             }
-#line 1191 "y.tab.c"
+#line 1192 "y.tab.c"
     break;
 
   case 10: /* E: TK_NUM  */
@@ -1196,11 +1197,11 @@ yyreduce:
                 yyval.label = getempcode();
                 yyval.traducao = "\t" + yyval.label + " = " + yyvsp[0].label + ";\n";
             }
-#line 1200 "y.tab.c"
+#line 1201 "y.tab.c"
     break;
 
 
-#line 1204 "y.tab.c"
+#line 1205 "y.tab.c"
 
       default: break;
     }
@@ -1402,6 +1403,14 @@ yyreturnlab:
 string getempcode(){
 	var_temp_qnt++;
 	return "t" + std::to_string(var_temp_qnt);
+}
+
+string declaracoes(){
+    string texto = "";
+    for(int i=1; i<=var_temp_qnt; i++){
+        texto += "\tint t" + std::to_string(i) + ";\n";
+    }
+    return texto;
 }
 
 
