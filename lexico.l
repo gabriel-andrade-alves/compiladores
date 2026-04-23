@@ -19,6 +19,9 @@ ID {LETRA}({LETRA}|{NUM})*
 
 {DELIM} {}
 
+"int"       { return TK_INT; }
+"float"     { return TK_FLOAT; }
+
 [()]		{ return *yytext; }
 
 [+\-*/;]	{ return *yytext; }
