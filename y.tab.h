@@ -63,7 +63,13 @@ extern int yydebug;
     TK_TIPO_CHAR = 264,            /* TK_TIPO_CHAR  */
     TK_TIPO_BOOL = 265,            /* TK_TIPO_BOOL  */
     TK_ID = 266,                   /* TK_ID  */
-    TK_IMPRIME = 267               /* TK_IMPRIME  */
+    TK_OR = 267,                   /* TK_OR  */
+    TK_AND = 268,                  /* TK_AND  */
+    TK_EQ = 269,                   /* TK_EQ  */
+    TK_DIF = 270,                  /* TK_DIF  */
+    TK_GE = 271,                   /* TK_GE  */
+    TK_LE = 272,                   /* TK_LE  */
+    TK_IMPRIME = 273               /* TK_IMPRIME  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -81,7 +87,13 @@ extern int yydebug;
 #define TK_TIPO_CHAR 264
 #define TK_TIPO_BOOL 265
 #define TK_ID 266
-#define TK_IMPRIME 267
+#define TK_OR 267
+#define TK_AND 268
+#define TK_EQ 269
+#define TK_DIF 270
+#define TK_GE 271
+#define TK_LE 272
+#define TK_IMPRIME 273
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED

@@ -55,5 +55,22 @@ CHAR \'(.|\\.)\'
 "/"             { return *yytext; }
 
 
+        /* Operadores relacionais*/
+
+">="            {return TK_GE; }
+">"             {return *yytext; }
+"<="            {return TK_LE; }
+"<"             {return *yytext; }
+"=="            {return TK_EQ; }
+"!="            {return TK_DIF; }
+
+
+        /* Operadores lógicos*/
+
+"&&"            {return TK_AND; }
+"||"            {return TK_OR; }
+"!"             {return *yytext; }
+
+
 
 %%

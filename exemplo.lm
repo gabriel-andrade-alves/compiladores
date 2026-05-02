@@ -1,16 +1,5 @@
-float a;
-a = 1.0 + 2.3/2.0;
+int a;
+float b;
+bool c;
 
-imprime(a);
-
-char c;
-c = '@';
-
-imprime(c);
-
-a = 2.0*a;
-imprime(a);
-
-bool troxa;
-troxa = true;
-imprime(troxa);
+c 

@@ -57,8 +57,13 @@ simbolo buscar_simbolo(string nome);
 
 
 // Precedência
+%left TK_OR
+%left TK_AND
+%left TK_EQ TK_DIF
+%left '>' '<' TK_GE TK_LE 
 %left '+' '-'
 %left '*' '/'
+%right '!'
 
 
 //comandos
@@ -138,7 +143,7 @@ CMD             : TIPO TK_ID ';' //Declaração
                     else if($3.tipo == "bool")
                         formato = "%d";
                     
-                    $$.traducao = $3.traducao + "\tprintf(\"" + formato + "\", " + $3.label + ");\n";
+                    $$.traducao = $3.traducao + "\t" + "printf(\"" + formato + "\\n\", " + $3.label + ");\n";
                 }
                 ;
 
@@ -226,8 +231,77 @@ E               : TK_ID
 
     /*    Operadores Relacionais    */
 
-    /*    Operadores lógicos    */
+                | E '<' E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " < " + $3.label + ";\n";
+                }
 
+                | E TK_LE E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " <= " + $3.label + ";\n";
+                }
+
+                | E '>' E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " > " + $3.label + ";\n";
+                }
+
+                | E TK_GE E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " >= " + $3.label + ";\n";
+                }
+
+                | E TK_EQ E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " == " + $3.label + ";\n";
+                }
+
+                | E TK_DIF E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " != " + $3.label + ";\n";
+                }
+    /*    Operadores lógicos    */
+                | E TK_AND E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " && " + $3.label + ";\n";
+                }
+
+                | E TK_OR E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " || " + $3.label + ";\n";
+                }
+
+                | '!' E
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = $2.traducao + "\t" + $$.label +
+                        " = " + " ! " + $2.label + ";\n";
+                }
 
 %%
 
