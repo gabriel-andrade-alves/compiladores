@@ -3,12 +3,11 @@
 #include <string>
 #include <sstream>
 #include <fstream>
-#include <map>        
+#include <unordered_map>    
 #include <vector>
 
-
 using namespace std;
-
+#define YYSTYPE atributos
 
 struct atributos
 {
@@ -19,168 +18,272 @@ struct atributos
 
 struct simbolo
 {
-    string nome_variavel_sistema;
+    string label;
     string tipo;
 };
 
-#define YYSTYPE atributos
 
 int var_temp_qnt;
-map<string, simbolo> tabela_simbolos; 
+string codigo_gerado;
 vector<string> tipos_temporarios;
+unordered_map<string, simbolo> tabela_simbolos; 
 
 
 int yylex(void);
-void yyerror(string);
+int yyerror(string);
 string getempcode(string tipo);
-string declaracoes();
+string gerar_declaracoes();
+void declarar_variavel(string nome, string tipo);
+simbolo buscar_simbolo(string nome);
 %}
 
 
-%token TK_NUM_INT
-%token TK_NUM_FLOAT
-%token TK_ID
+//Literais
 %token TK_INT
 %token TK_FLOAT
+%token TK_CHAR
+%token TK_BOOL
 
-%start S
 
+//Tipos
+%token TK_TIPO_INT
+%token TK_TIPO_FLOAT
+%token TK_TIPO_CHAR
+%token TK_TIPO_BOOL
+
+
+//Identificador
+%token TK_ID
+
+
+// Precedência
 %left '+' '-'
 %left '*' '/'
 
 
+//comandos
+%token TK_IMPRIME
+
+
+%start S
+
 
 %%
 
-S           :DECLARACOES COMANDOS  
-            {
-                cout << "#include <stdio.h>\n"
-                     << "int main(){\n"
-                     << declaracoes() << "\n"
-                     << $2.traducao 
-                     << "\treturn 0;\n}" << endl;
+S                   : PROGRAMA
+                    {
+                        codigo_gerado = codigo_gerado
+                                        + "#include <stdio.h>\n" 
+                                        + "#define true 1\n"
+                                        + "#define false 0\n"
+                                        + "#define bool int\n\n"
+                                        + "int main(){\n"
+                                        + gerar_declaracoes() + "\n"
+                                        + $1.traducao
+                                        + "\n\treturn 0;\n}\n";
+                    }
 
-            }
-
-DECLARACOES : DECLARACOES DECL
-            |
-
-DECL        : TIPO TK_ID ';'
-            {
-                if(tabela_simbolos.count($2.label))
-                    yyerror("Erro: Variável '" + $2.label + "' já declarada.");
-                tabela_simbolos[$2.label] = {"u_" + $2.label, $1.label};
-            }
+PROGRAMA            : COMANDOS
 
 
-TIPO        : TK_INT    { $$.label = "int"; }
-            | TK_FLOAT  { $$.label = "float"; }
+COMANDOS            : COMANDOS CMD
+                    {
+                        $$.traducao = $1.traducao + $2.traducao;
+                    }
 
+                    |   
+                    {
+                        $$.traducao = "";
+                    }
 
-COMANDOS    : COM COMANDOS
-            {
-                $$.traducao = $1.traducao + $2.traducao;
-            }
-            | {$$.traducao = "";}
+    /* Tipos */
+TIPO                : TK_TIPO_INT   { $$.tipo = "int";   }
+			        | TK_TIPO_FLOAT { $$.tipo = "float"; }
+			        | TK_TIPO_CHAR  { $$.tipo = "char";  }
+			        | TK_TIPO_BOOL  { $$.tipo = "bool";  }
+			        ;
 
-COM         : E ';'
+    /* COMANDO */
+CMD             : TIPO TK_ID ';' //Declaração
+                {
+                    declarar_variavel($2.label, $1.tipo);
+                    $$.traducao = "";
+                }
 
+                | TK_ID '=' E ';' //Atribuição
+                {
+                    simbolo simb = buscar_simbolo($1.label);
 
+                    if(simb.tipo != $3.tipo){
+                        yyerror("Erro: Atribuição com tipos diferentes");
+                    }
 
-E           : 
-            /* tipos */
-            TK_NUM_INT 
-            {
-                $$.tipo = "int";
-                $$.label = getempcode("int");
-                $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
-            }
-            | TK_NUM_FLOAT
-            {
-                $$.label = getempcode("float");
-                $$.tipo = "float";
-                $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n"; 
-            }
-            | TK_ID
-            {
-                if(!tabela_simbolos.count($1.label))
-                    yyerror("Erro: Variável '" + $1.label + "' não declarada.");
+                    $$.traducao = $3.traducao + "\t" + simb.label + " = " + $3.label + ";\n";
+                }
+
+                | E ';'
+                {
+                    $$.traducao = $1.traducao;
+                }
+
+                | TK_IMPRIME '(' E ')' ';'
+                {
+                    string formato;
+                    if($3.tipo == "int")
+                        formato = "%d";
+                    else if($3.tipo == "float")
+                        formato = "%f";
+                    else if($3.tipo == "char")
+                        formato = "%c";
+                    else if($3.tipo == "bool")
+                        formato = "%d";
+                    
+                    $$.traducao = $3.traducao + "\tprintf(\"" + formato + "\", " + $3.label + ");\n";
+                }
+                ;
+
+    /* Expressão */
+
+    /* Identificador */
+E               : TK_ID
+                {
+                    simbolo simb = buscar_simbolo($1.label);
+                    $$.label = simb.label;
+                    $$.tipo = simb.tipo;
+                    $$.traducao = "";
+                }    
+               
+    /*    Literais    */
+                | TK_INT
+                {
+			        $$.label = getempcode("int");
+			        $$.tipo = "int";
+			        $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";                    
+                }
                 
-                $$.tipo = tabela_simbolos[$1.label].tipo;
-                $$.label = getempcode(tabela_simbolos[$1.label].tipo);
-                $$.traducao = "\t" + $$.label + " = u_" + $1.label + ";\n";
-            }
+                | TK_FLOAT
+                {
+                    $$.label = getempcode("float");
+                    $$.tipo = "float";
+                    $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+                }
+
+                | TK_CHAR
+                {
+                    $$.label = getempcode("char");
+                    $$.tipo = "char";
+                    $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+                }
+
+                | TK_BOOL
+                {
+                    $$.label = getempcode("bool");
+                    $$.tipo = "bool";
+                    $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n"; 
+                }
+    /*    Operadores aritméticos   */
+
+                | E '+' E
+                {
+                    $$.label = getempcode($1.tipo);
+                    $$.tipo = $1.tipo;
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " + " + $3.label + ";\n";
+                }
+
+                | E '-' E
+                {
+                    $$.label = getempcode($1.tipo);
+                    $$.tipo = $1.tipo;
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + 
+                        " = " + $1.label + " - " + $3.label + ";\n";
+                }
+
+                | E '*' E
+                {
+                    $$.label = getempcode($1.tipo);
+                    $$.tipo = $1.tipo;
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " * " + $3.label + ";\n";
+                }
+
+                | E '/' E
+                {
+                    $$.label = getempcode($1.tipo);
+                    $$.tipo = $1.tipo;
+                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
+                        " = " + $1.label + " / " + $3.label + ";\n";
+                }
+
+    /*    Parênteses    */
+                | '(' E ')'
+                {
+                    $$.label = $2.label;
+                    $$.tipo = $2.tipo;
+                    $$.traducao = $2.traducao;
+                }
+                ;
+
+    /*    Operadores Relacionais    */
+
+    /*    Operadores lógicos    */
 
 
-            | '(' E ')'
-            {
-                $$.label = $2.label;
-                $$.tipo = $2.tipo;
-                $$.traducao = $2.traducao;
-            }
-
-
-            /* operadores aritmáticos*/
-            | E '+' E
-            {
-                $$.tipo = $1.tipo;
-                $$.label = getempcode($$.tipo);
-			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
-				" + " + $3.label + ";\n";
-            }
-            | E '-' E
-            {
-                $$.tipo = $1.tipo;
-                $$.label = getempcode($$.tipo);
-			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
-				" - " + $3.label + ";\n";
-            }
-            | E '*' E
-            {
-                $$.tipo = $1.tipo;
-                $$.label = getempcode($$.tipo);
-			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
-				" * " + $3.label + ";\n";
-            }
-            | E '/' E
-            {
-                $$.tipo = $1.tipo;
-                $$.label = getempcode($$.tipo);
-			    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + " = " + $1.label +
-				" / " + $3.label + ";\n";
-            }
-			| TK_ID '=' E
-			{
-                if(!tabela_simbolos.count($1.label))
-                    yyerror("Erro: Variável '" + $1.label + "' não declarada.");
-                
-                $$.traducao = $3.traducao + "\tu_" + $1.label + " = " + $3.label + ";\n";
-			}
-
-
-
-        
 %%
+
 
 #include "lex.yy.c"
 
 
 string getempcode(string tipo){
-	var_temp_qnt++;
+    var_temp_qnt++;
     tipos_temporarios.push_back(tipo);
-	return "t" + std::to_string(var_temp_qnt);
+
+    return "t" + to_string(var_temp_qnt);
 }
 
-string declaracoes(){
+
+void declarar_variavel(string nome, string tipo){
+    if(tabela_simbolos.count(nome)){
+        yyerror("Erro: Variável \"" + nome + "\" já declarada");
+        exit(1);
+    }
+    else{
+        string variavel_usuario_sistema = "u_" + nome; 
+        //souluciona conflito com variável de usuário e sistema com nomes iguais
+        simbolo simb;
+        simb.tipo = tipo;
+        simb.label = variavel_usuario_sistema;
+        tabela_simbolos[nome] = simb;
+    }
+
+}
+
+
+simbolo buscar_simbolo(string nome){
+    if(tabela_simbolos.count(nome)){
+        return tabela_simbolos[nome];
+    } else{
+        yyerror("Erro: Variável \"" + nome + "\" não declarada");
+        exit(1);
+    }
+}
+
+
+string gerar_declaracoes(){
     string texto = "";
 
-    //adicionar u para diferenciar variavel de usuario de sistema
+    //variaveis de usuário em de sistema
     for(auto const& [id, simb] : tabela_simbolos) {
-        texto += "\t" + simb.tipo + " " + simb.nome_variavel_sistema + "; //user:" + id + "\n";
+        texto += "\t" + simb.tipo + " " + simb.label + "; //user:" + id + "\n";
         if(simb.tipo == "int")
-            texto += "\t" + simb.nome_variavel_sistema + " = 0;\n";
+            texto += "\t" + simb.label + " = 0; //inicialização\n";
         else if(simb.tipo == "float")
-            texto += "\t" + simb.nome_variavel_sistema + " = 0.0;\n";
+            texto += "\t" + simb.label + " = 0.0; //inicialização\n";
+        else if(simb.tipo == "bool")
+            texto += "\t" + simb.label + " = false; //inicialização\n";
+        else if(simb.tipo == "char")
+            texto += "\t" + simb.label + " = ' '; //inicialização\n";
     }
 
     //variaveis de sistema 
@@ -191,20 +294,38 @@ string declaracoes(){
 }
 
 
+void imprimir_codigo_gerado(){
+    cout << codigo_gerado;
 
-int main( int argc, char* argv[] )
-{
+    ofstream arquivo("codigo_c--.c");
 
-	var_temp_qnt = 0;
+    if (arquivo.is_open()) {
+        arquivo << codigo_gerado << endl;
+        arquivo.close();
+    } else {
+        cout << "Erro ao abrir o arquivo!" << endl;
+    }
+
+}
+
+int main(){
+    var_temp_qnt = 0;
+    codigo_gerado = "";
 
     printf("\n");   
+    
     yyparse();
+
+    imprimir_codigo_gerado();
+
 
 	return 0;
 }
 
-void yyerror( string MSG )
-{
-	cout << MSG << endl;
-	exit (0);
-}				
+int yyerror(string MSG){
+    cout << MSG << endl;
+    exit(0);
+}
+
+
+

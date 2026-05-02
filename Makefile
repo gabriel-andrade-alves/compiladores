@@ -5,3 +5,5 @@ all:
 		g++ -o glf y.tab.c -Wno-free-nonheap-object
 
 		./glf < exemplo.lm
+
+		gcc codigo_c--.c -o out

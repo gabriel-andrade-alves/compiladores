@@ -1,4 +1,8 @@
-Rar/
-*.txt
-*tab.c
-*.tab.h
+lex.yy.c
+y.tab.c
+y.tab.h
+caminho.txt
+exemplo.lm
+glf
+out
+codigo_c--.c

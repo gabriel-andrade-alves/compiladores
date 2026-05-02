@@ -9,33 +9,50 @@ DIGITO [0-9]
 DIGITOS [1-9]
 LETRA [A-Za-z_]
 
-
 DELIM {ESPACO}+
-NUM_INT {DIGITOS}{DIGITO}*
-NUM_FLOAT {DIGITOS}{DIGITO}*"."{DIGITO}+
+INT {DIGITOS}{DIGITO}*
+FLOAT {DIGITOS}{DIGITO}*"."{DIGITO}+
 ID {LETRA}({LETRA}|{DIGITO})*
-
+CHAR \'(.|\\.)\'
 
 %%
 
-"\n" {}
+"\n"            {}
 
-{DELIM} {}
+{DELIM}         {}
 
-"int"       { return TK_INT; }
-"float"     { return TK_FLOAT; }
+      /* Tipos  */
+"int"           { return TK_TIPO_INT; }
+"float"         { return TK_TIPO_FLOAT; }
+"char"          {return TK_TIPO_CHAR; }
+"bool"          {return TK_TIPO_BOOL; }   
+"true"          { yylval.label = yytext; return TK_BOOL; }
+"false"         { yylval.label = yytext; return TK_BOOL; }
 
-"imprime"     {return *yytext;}
+        /* Imprime e leia */
+"imprime"       { return TK_IMPRIME; }
 
-[()]		{ return *yytext; }
+        /* Números e identificador */
+{FLOAT}     { yylval.label = yytext; return TK_FLOAT; }
+{INT}		{ yylval.label = yytext; return TK_INT; }
+{ID}		{ yylval.label = yytext; return TK_ID; }
 
-[+\-*/;]	{ return *yytext; }
 
-"="         { return *yytext; }
+        /* Char*/
+{CHAR}          { yylval.label = yytext; return TK_CHAR; }
 
-{ID}		    { yylval.label = yytext; return TK_ID; }
-{NUM_INT}		{ yylval.label = yytext; return TK_NUM_INT; }
-{NUM_FLOAT}     { yylval.label = yytext; return TK_NUM_FLOAT; }
+
+        /* Atribuição, parênteses e ;  */
+"="             {return *yytext; }
+";"             {return *yytext; }
+[()]            {return *yytext; }
+
+
+        /* Operadores aritméticos*/
+"+"             { return *yytext; }
+"-"             { return *yytext; }
+"*"             { return *yytext; }
+"/"             { return *yytext; }
 
 
 
