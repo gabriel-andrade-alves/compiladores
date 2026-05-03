@@ -35,6 +35,7 @@ string getempcode(string tipo);
 string gerar_declaracoes();
 void declarar_variavel(string nome, string tipo);
 simbolo buscar_simbolo(string nome);
+string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string &label_out2, string &tipo_res);
 %}
 
 
@@ -63,6 +64,7 @@ simbolo buscar_simbolo(string nome);
 %left '>' '<' TK_GE TK_LE 
 %left '+' '-'
 %left '*' '/'
+%right CAST_PREC
 %right '!'
 
 
@@ -190,34 +192,42 @@ E               : TK_ID
 
                 | E '+' E
                 {
-                    $$.label = getempcode($1.tipo);
-                    $$.tipo = $1.tipo;
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " + " + $3.label + ";\n";
+                    string l1, l2, tipo_final;
+                    string trad_base = aplicar_coercao($1, $3, l1, l2, tipo_final);
+            
+                    $$.tipo = tipo_final;
+                    $$.label = getempcode(tipo_final);
+                    $$.traducao = trad_base + "\t" + $$.label + " = " + l1 + " + " + l2 + ";\n";
                 }
 
                 | E '-' E
                 {
-                    $$.label = getempcode($1.tipo);
-                    $$.tipo = $1.tipo;
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label + 
-                        " = " + $1.label + " - " + $3.label + ";\n";
+                    string l1, l2, tipo_final;
+                    string trad_base = aplicar_coercao($1, $3, l1, l2, tipo_final);
+            
+                    $$.tipo = tipo_final;
+                    $$.label = getempcode(tipo_final);
+                    $$.traducao = trad_base + "\t" + $$.label + " = " + l1 + " - " + l2 + ";\n";
                 }
 
                 | E '*' E
                 {
-                    $$.label = getempcode($1.tipo);
-                    $$.tipo = $1.tipo;
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " * " + $3.label + ";\n";
+                    string l1, l2, tipo_final;
+                    string trad_base = aplicar_coercao($1, $3, l1, l2, tipo_final);
+            
+                    $$.tipo = tipo_final;
+                    $$.label = getempcode(tipo_final);
+                    $$.traducao = trad_base + "\t" + $$.label + " = " + l1 + " * " + l2 + ";\n";
                 }
 
                 | E '/' E
                 {
-                    $$.label = getempcode($1.tipo);
-                    $$.tipo = $1.tipo;
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " / " + $3.label + ";\n";
+                    string l1, l2, tipo_final;
+                    string trad_base = aplicar_coercao($1, $3, l1, l2, tipo_final);
+            
+                    $$.tipo = tipo_final;
+                    $$.label = getempcode(tipo_final);
+                    $$.traducao = trad_base + "\t" + $$.label + " = " + l1 + " / " + l2 + ";\n";
                 }
 
     /*    Parênteses    */
@@ -228,6 +238,13 @@ E               : TK_ID
                     $$.traducao = $2.traducao;
                 }
                 ;
+    /*    Casting       */
+                | '(' TIPO ')' E %prec CAST_PREC
+                {
+                    $$.tipo = $2.tipo;
+                    $$.label = getempcode($2.tipo);
+                    $$.traducao = $4.traducao + "\t" + $$.label + " = (" + $2.tipo + ") " + $4.label + ";\n";
+                }
 
     /*    Operadores Relacionais    */
 
@@ -367,6 +384,27 @@ string gerar_declaracoes(){
     return texto;
 }
 
+
+string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string &label_out2, string &tipo_res) {
+    string trad = e1.traducao + e2.traducao;
+    label_out1 = e1.label;
+    label_out2 = e2.label;
+
+    if (e1.tipo == e2.tipo) {
+        tipo_res = e1.tipo;
+    } else if (e1.tipo == "float" && e2.tipo == "int") {
+        tipo_res = "float";
+        label_out2 = getempcode("float");
+        trad += "\t" + label_out2 + " = (float) " + e2.label + ";\n";
+    } else if (e1.tipo == "int" && e2.tipo == "float") {
+        tipo_res = "float";
+        label_out1 = getempcode("float");
+        trad += "\t" + label_out1 + " = (float) " + e1.label + ";\n";
+    } else {
+        yyerror("Erro: Operação entre tipos incompatíveis");
+    }
+    return trad;
+}
 
 void imprimir_codigo_gerado(){
     cout << codigo_gerado;
