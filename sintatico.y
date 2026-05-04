@@ -120,13 +120,56 @@ CMD             : TIPO TK_ID ';' //Declaração
                 | TK_ID '=' E ';' //Atribuição
                 {
                     simbolo simb = buscar_simbolo($1.label);
-
-                    if(simb.tipo != $3.tipo){
-                        yyerror("Erro: Atribuição com tipos diferentes");
+                    
+                    if(simb.tipo == $3.tipo) {
+                        $$.traducao = $3.traducao + "\t" + simb.label + " = " + $3.label + ";\n";
+                    } 
+                    
+                    else if(simb.tipo == "float" && $3.tipo == "int") {
+                        string temp = getempcode("float");
+                        $3.traducao += "\t" + temp + " = (float) " + $3.label + ";\n";
+                        $$.traducao = $3.traducao + "\t" + simb.label + " = " + temp + ";\n";
+                    } 
+                    
+                    else if(simb.tipo == "int" && $3.tipo == "float") {
+                        string temp = getempcode("int");
+                        $3.traducao += "\t" + temp + " = (int) " + $3.label + ";\n";
+                        $$.traducao = $3.traducao + "\t" + simb.label + " = " + temp + ";\n";
+                    } 
+                    
+                    else {
+                        yyerror("Erro: Atribuição com tipos incompatíveis");
                     }
-
-                    $$.traducao = $3.traducao + "\t" + simb.label + " = " + $3.label + ";\n";
                 }
+
+                | TIPO TK_ID '=' E ';'
+                {
+                    declarar_variavel($2.label, $1.tipo);
+                    $$.traducao = "";
+
+                    simbolo simb = buscar_simbolo($2.label);
+                    
+                    if(simb.tipo == $4.tipo) {
+                        $$.traducao = $4.traducao + "\t" + simb.label + " = " + $4.label + ";\n";
+                    } 
+                    
+                    else if(simb.tipo == "float" && $4.tipo == "int") {
+                        string temp = getempcode("float");
+                        $4.traducao += "\t" + temp + " = (float) " + $4.label + ";\n";
+                        $$.traducao = $4.traducao + "\t" + simb.label + " = " + temp + ";\n";
+                    } 
+                    
+                    else if(simb.tipo == "int" && $4.tipo == "float") {
+                        string temp = getempcode("int");
+                        $4.traducao += "\t" + temp + " = (int) " + $4.label + ";\n";
+                        $$.traducao = $4.traducao + "\t" + simb.label + " = " + temp + ";\n";
+                    } 
+                    
+                    else {
+                        yyerror("Erro: Atribuição com tipos incompatíveis");
+                    }
+                
+                } 
 
                 | E ';'
                 {

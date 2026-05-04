@@ -1,3 +1,7 @@
-int I;
-float F;
-I = (int) F;
+int i;
+
+float f;
+
+i = f;
+
+imprime(i);
