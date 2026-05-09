@@ -108,6 +108,7 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 
 //comandos
 %token TK_IMPRIME
+%token TK_LER
 
 
 %start S
@@ -224,6 +225,24 @@ CMD             : TIPO TK_ID ';' //Declaração
                         formato = "%d";
                     
                     $$.traducao = $3.traducao + "\t" + "printf(\"" + formato + "\\n\", " + $3.label + ");\n";
+                }
+
+                | TK_LER '(' TK_ID ')' ';'
+                {
+                    simbolo s = buscar_simbolo($3.label);
+                    string formato;
+
+                    if(s.tipo == "int")
+                        formato = "%d";
+                    else if(s.tipo == "float")
+                        formato = "%f";
+                    else if(s.tipo == "char")
+                        formato = " %c";
+                    else if(s.tipo == "bool")
+                        formato = "%d";
+
+                    $$.traducao = $3.traducao + "\t" + "scanf(\"" + formato + "\"," + " &" + s.label + ");\n";     
+
                 }
                 ;
 

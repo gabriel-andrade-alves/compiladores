@@ -7,3 +7,4 @@ all:
 		./glf < exemplo.lm
 
 		gcc codigo_c--.c -o out
+		./out

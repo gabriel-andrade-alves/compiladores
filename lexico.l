@@ -30,6 +30,7 @@ CHAR \'(.|\\.)\'
 
         /* Imprime e leia */
 "imprime"       { return TK_IMPRIME; }
+"ler"           { return TK_LER; }
 
         /* Números e identificador */
 {FLOAT}     { yylval.label = yytext; return TK_FLOAT; }
