@@ -1,7 +1,3 @@
-int i;
+bool d;
 
-float f;
-
-i = f;
-
-imprime(i);
+d = (2.0 > 1) && (4 <= 2);

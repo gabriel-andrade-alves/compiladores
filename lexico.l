@@ -3,15 +3,14 @@
 %}
 
 %option noyywrap
-
 ESPACO [ \t]
 DIGITO [0-9]
 DIGITOS [1-9]
 LETRA [A-Za-z_]
 
 DELIM {ESPACO}+
-INT {DIGITOS}{DIGITO}*
-FLOAT {DIGITOS}{DIGITO}*"."{DIGITO}+
+INT [-]?{DIGITOS}{DIGITO}*
+FLOAT [-]?{DIGITOS}{DIGITO}*"."{DIGITO}+
 ID {LETRA}({LETRA}|{DIGITO})*
 CHAR \'(.|\\.)\'
 
@@ -57,10 +56,10 @@ CHAR \'(.|\\.)\'
 
         /* Operadores relacionais*/
 
-">="            {return TK_GE; }
-">"             {return *yytext; }
-"<="            {return TK_LE; }
-"<"             {return *yytext; }
+">="            {yylval.label = yytext; return TK_REL; }
+">"             {yylval.label = yytext; return TK_REL; }
+"<="            {yylval.label = yytext; return TK_REL; }
+"<"             {yylval.label = yytext; return TK_REL; }
 "=="            {return TK_EQ; }
 "!="            {return TK_DIF; }
 

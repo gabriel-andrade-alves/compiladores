@@ -3,7 +3,8 @@
 #include <string>
 #include <sstream>
 #include <fstream>
-#include <unordered_map>    
+#include <unordered_map>   
+#include <map> 
 #include <vector>
 
 using namespace std;
@@ -28,6 +29,30 @@ string codigo_gerado;
 vector<string> tipos_temporarios;
 unordered_map<string, simbolo> tabela_simbolos; 
 
+string matriz_conversao_implicita[4][4] = {
+    //          int       float      char      bool
+    /*int*/   {"int",   "float",   "erro",      "erro"},
+    /*float*/ {"float", "float",   "erro",  	"erro"},
+    /*char*/  {"erro",   "erro",   "erro",      "erro"},
+    /*bool*/  {"erro",   "erro",   "erro",      "erro"}
+};
+
+string matriz_atribuicao[4][4] = {
+	//          int       float      char      bool
+    /*int*/   {"int",     "int",   "erro",   "erro"},
+    /*float*/ {"float", "float",   "erro",   "erro"},
+    /*char*/  {"erro",   "erro",   "char",   "erro"},
+    /*bool*/  {"erro",   "erro",   "erro",   "bool"}
+};
+
+map<string, int> tipo_para_id = {
+    {"int",   0},
+    {"float", 1},
+    {"char",  2},
+    {"bool",  3}
+};
+
+
 
 int yylex(void);
 int yyerror(string);
@@ -35,6 +60,10 @@ string getempcode(string tipo);
 string gerar_declaracoes();
 void declarar_variavel(string nome, string tipo);
 simbolo buscar_simbolo(string nome);
+
+string get_tipo_result(string t1, string t2) { return matriz_conversao_implicita[tipo_para_id[t1]][tipo_para_id[t2]]; } 
+string get_tipo_atribuicao(string t1, string t2) { return matriz_atribuicao[tipo_para_id[t1]][tipo_para_id[t2]]; } 
+
 string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string &label_out2, string &tipo_res);
 %}
 
@@ -57,11 +86,20 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_ID
 
 
+//Relacional
+%token TK_REL
+%token TK_EQ
+%token TK_DIF
+
+//Logicos
+%token TK_AND TK_OR
+
+
 // Precedência
 %left TK_OR
 %left TK_AND
 %left TK_EQ TK_DIF
-%left '>' '<' TK_GE TK_LE 
+%left TK_REL
 %left '+' '-'
 %left '*' '/'
 %right CAST_PREC
@@ -119,27 +157,26 @@ CMD             : TIPO TK_ID ';' //Declaração
 
                 | TK_ID '=' E ';' //Atribuição
                 {
-                    simbolo simb = buscar_simbolo($1.label);
+                    simbolo s = buscar_simbolo($1.label);
                     
-                    if(simb.tipo == $3.tipo) {
-                        $$.traducao = $3.traducao + "\t" + simb.label + " = " + $3.label + ";\n";
-                    } 
-                    
-                    else if(simb.tipo == "float" && $3.tipo == "int") {
-                        string temp = getempcode("float");
-                        $3.traducao += "\t" + temp + " = (float) " + $3.label + ";\n";
-                        $$.traducao = $3.traducao + "\t" + simb.label + " = " + temp + ";\n";
-                    } 
-                    
-                    else if(simb.tipo == "int" && $3.tipo == "float") {
-                        string temp = getempcode("int");
-                        $3.traducao += "\t" + temp + " = (int) " + $3.label + ";\n";
-                        $$.traducao = $3.traducao + "\t" + simb.label + " = " + temp + ";\n";
-                    } 
-                    
-                    else {
-                        yyerror("Erro: Atribuição com tipos incompatíveis");
+                    string tipo_resultante = get_tipo_atribuicao(s.tipo, $3.tipo);
+                    string linha_conversao = "";
+
+                    string label_expressao = $3.label;
+
+                    if (s.tipo != $3.tipo) {
+                        if (tipo_resultante == "erro") {
+                            yyerror("Atribuicao invalida");
+                            exit(1);
+                        }
+                        else {
+                            label_expressao = getempcode(tipo_resultante);
+                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") "  +
+                                $3.label + ";\n";
+                        }
                     }
+
+                    $$.traducao = $3.traducao + linha_conversao +"\t" + s.label + " = " + label_expressao + ";\n";
                 }
 
                 | TIPO TK_ID '=' E ';'
@@ -147,28 +184,26 @@ CMD             : TIPO TK_ID ';' //Declaração
                     declarar_variavel($2.label, $1.tipo);
                     $$.traducao = "";
 
-                    simbolo simb = buscar_simbolo($2.label);
+                    simbolo s = buscar_simbolo($2.label);
                     
-                    if(simb.tipo == $4.tipo) {
-                        $$.traducao = $4.traducao + "\t" + simb.label + " = " + $4.label + ";\n";
-                    } 
-                    
-                    else if(simb.tipo == "float" && $4.tipo == "int") {
-                        string temp = getempcode("float");
-                        $4.traducao += "\t" + temp + " = (float) " + $4.label + ";\n";
-                        $$.traducao = $4.traducao + "\t" + simb.label + " = " + temp + ";\n";
-                    } 
-                    
-                    else if(simb.tipo == "int" && $4.tipo == "float") {
-                        string temp = getempcode("int");
-                        $4.traducao += "\t" + temp + " = (int) " + $4.label + ";\n";
-                        $$.traducao = $4.traducao + "\t" + simb.label + " = " + temp + ";\n";
-                    } 
-                    
-                    else {
-                        yyerror("Erro: Atribuição com tipos incompatíveis");
+                    string tipo_resultante = get_tipo_atribuicao(s.tipo, $4.tipo);
+                    string linha_conversao = "";
+
+                    string label_expressao = $4.label;
+
+                    if (s.tipo != $4.tipo) {
+                        if (tipo_resultante == "erro") {
+                            yyerror("Atribuicao invalida");
+                            exit(1);
+                        }
+                        else {
+                            label_expressao = getempcode(tipo_resultante);
+                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") "  +
+                                $4.label + ";\n";
+                        }
                     }
-                
+
+                    $$.traducao = $4.traducao + linha_conversao +"\t" + s.label + " = " + label_expressao + ";\n";
                 } 
 
                 | E ';'
@@ -235,42 +270,94 @@ E               : TK_ID
 
                 | E '+' E
                 {
-                    string l1, l2, tipo_final;
-                    string trad_base = aplicar_coercao($1, $3, l1, l2, tipo_final);
-            
-                    $$.tipo = tipo_final;
-                    $$.label = getempcode(tipo_final);
-                    $$.traducao = trad_base + "\t" + $$.label + " = " + l1 + " + " + l2 + ";\n";
+                    string tipo_resultante = get_tipo_result($1.tipo, $3.tipo);
+
+                    if (tipo_resultante == "erro") {
+                        yyerror("Operacao com soma invalida");
+                        exit(1);
+                    }
+
+                    string linha_conversao = "";
+
+                    string operando1 = $1.label;
+                    string operando2 = $3.label;
+
+                    linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+
+
+                    $$.label = getempcode(tipo_resultante);
+                    $$.tipo = tipo_resultante;
+                    $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
+                        "\t" + $$.label + " = " + operando1 + " + " + operando2 + ";\n";
                 }
 
                 | E '-' E
                 {
-                    string l1, l2, tipo_final;
-                    string trad_base = aplicar_coercao($1, $3, l1, l2, tipo_final);
-            
-                    $$.tipo = tipo_final;
-                    $$.label = getempcode(tipo_final);
-                    $$.traducao = trad_base + "\t" + $$.label + " = " + l1 + " - " + l2 + ";\n";
+                    string tipo_resultante = get_tipo_result($1.tipo, $3.tipo);
+
+                    if (tipo_resultante == "erro") {
+                        yyerror("Operacao com soma invalida");
+                        exit(1);
+                    }
+
+                    string linha_conversao = "";
+
+                    string operando1 = $1.label;
+                    string operando2 = $3.label;
+
+                    linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+
+
+                    $$.label = getempcode(tipo_resultante);
+                    $$.tipo = tipo_resultante;
+                    $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
+                        "\t" + $$.label + " = " + operando1 + " - " + operando2 + ";\n";
                 }
 
                 | E '*' E
                 {
-                    string l1, l2, tipo_final;
-                    string trad_base = aplicar_coercao($1, $3, l1, l2, tipo_final);
-            
-                    $$.tipo = tipo_final;
-                    $$.label = getempcode(tipo_final);
-                    $$.traducao = trad_base + "\t" + $$.label + " = " + l1 + " * " + l2 + ";\n";
+                    string tipo_resultante = get_tipo_result($1.tipo, $3.tipo);
+
+                    if (tipo_resultante == "erro") {
+                        yyerror("Operacao com soma invalida");
+                        exit(1);
+                    }
+
+                    string linha_conversao = "";
+
+                    string operando1 = $1.label;
+                    string operando2 = $3.label;
+
+                    linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+
+
+                    $$.label = getempcode(tipo_resultante);
+                    $$.tipo = tipo_resultante;
+                    $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
+                        "\t" + $$.label + " = " + operando1 + " * " + operando2 + ";\n";
                 }
 
                 | E '/' E
                 {
-                    string l1, l2, tipo_final;
-                    string trad_base = aplicar_coercao($1, $3, l1, l2, tipo_final);
-            
-                    $$.tipo = tipo_final;
-                    $$.label = getempcode(tipo_final);
-                    $$.traducao = trad_base + "\t" + $$.label + " = " + l1 + " / " + l2 + ";\n";
+                    string tipo_resultante = get_tipo_result($1.tipo, $3.tipo);
+
+                    if (tipo_resultante == "erro") {
+                        yyerror("Operacao com soma invalida");
+                        exit(1);
+                    }
+
+                    string linha_conversao = "";
+
+                    string operando1 = $1.label;
+                    string operando2 = $3.label;
+
+                    linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+
+
+                    $$.label = getempcode(tipo_resultante);
+                    $$.tipo = tipo_resultante;
+                    $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
+                        "\t" + $$.label + " = " + operando1 + " / " + operando2 + ";\n";
                 }
 
     /*    Parênteses    */
@@ -289,58 +376,99 @@ E               : TK_ID
                     $$.traducao = $4.traducao + "\t" + $$.label + " = (" + $2.tipo + ") " + $4.label + ";\n";
                 }
 
-    /*    Operadores Relacionais    */
+    /*    Operadores Relacionais */   
 
-                | E '<' E
-                {
+                | E TK_REL E
+			    {
+                    if ($1.tipo == "bool" || $3.tipo == "bool") {
+                        yyerror("Operacao invalida");
+                        exit(1);
+                    }
+
+                    string tipo_resultante = get_tipo_result($1.tipo, $3.tipo);
+
+                    if (tipo_resultante == "erro") {
+                        yyerror("Operacao invalida");
+                        exit(1);
+                    }
+
+                    string linha_conversao = "";
+
+                    string operando1 = $1.label;
+                    string operando2 = $3.label;
+
+                    linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+
                     $$.label = getempcode("bool");
                     $$.tipo = "bool";
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " < " + $3.label + ";\n";
-                }
-
-                | E TK_LE E
-                {
-                    $$.label = getempcode("bool");
-                    $$.tipo = "bool";
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " <= " + $3.label + ";\n";
-                }
-
-                | E '>' E
-                {
-                    $$.label = getempcode("bool");
-                    $$.tipo = "bool";
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " > " + $3.label + ";\n";
-                }
-
-                | E TK_GE E
-                {
-                    $$.label = getempcode("bool");
-                    $$.tipo = "bool";
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " >= " + $3.label + ";\n";
-                }
+                    $$.traducao = $1.traducao + $3.traducao + linha_conversao +
+                    "\t" + $$.label + " = " + operando1 + $2.label + operando2 + ";\n";		
+			    }
+            
 
                 | E TK_EQ E
                 {
+                    string linha_conversao = "";
+
+                    string operando1 = $1.label;
+                    string operando2 = $3.label;
+
+
+                    if ($1.tipo != $3.tipo) {
+                        string tipo_resultante = get_tipo_result($1.tipo, $3.tipo);
+                        if (tipo_resultante == "erro") {
+                            yyerror("Operacao invalida");
+                            exit(1);
+                        }
+
+                        //Conversão Implícita
+                        string operando1 = $1.label;
+                        string operando2 = $3.label;
+
+                        linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+                    }
+
                     $$.label = getempcode("bool");
                     $$.tipo = "bool";
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " == " + $3.label + ";\n";
+                    $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
+                    "\t" + $$.label + " = " + operando1 + " == " + operando2 + ";\n";		
                 }
 
                 | E TK_DIF E
                 {
+                    string linha_conversao = "";
+
+                    string operando1 = $1.label;
+                    string operando2 = $3.label;
+
+
+                    if ($1.tipo != $3.tipo) {
+                        string tipo_resultante = get_tipo_result($1.tipo, $3.tipo);
+                        if (tipo_resultante == "erro") {
+                            yyerror("Operacao invalida: nao e possivel comparar '" + $1.tipo + "' com '" + $3.tipo + "'.");
+                            exit(1);
+                        }
+
+                        //Conversão Implícita
+                        string operando1 = $1.label;
+                        string operando2 = $3.label;
+
+                        linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+                    }
+
                     $$.label = getempcode("bool");
                     $$.tipo = "bool";
-                    $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
-                        " = " + $1.label + " != " + $3.label + ";\n";
+                    $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
+                    "\t" + $$.label + " = " + operando1 + " != " + operando2 + ";\n";		
                 }
+                
     /*    Operadores lógicos    */
                 | E TK_AND E
                 {
+                    if($1.tipo != "bool" || $3.tipo != "bool"){
+                        yyerror("Operação Invalida: logico so pode operador bool");
+                        exit(1);
+                    }
                     $$.label = getempcode("bool");
                     $$.tipo = "bool";
                     $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
@@ -349,6 +477,10 @@ E               : TK_ID
 
                 | E TK_OR E
                 {
+                    if($1.tipo != "bool" || $3.tipo != "bool"){
+                        yyerror("Operação Invalida: logico so pode operador bool");
+                        exit(1);
+                    }
                     $$.label = getempcode("bool");
                     $$.tipo = "bool";
                     $$.traducao = $1.traducao + $3.traducao + "\t" + $$.label +
@@ -357,6 +489,10 @@ E               : TK_ID
 
                 | '!' E
                 {
+                    if($2.tipo != "bool"){
+                        yyerror("Operação Invalida: bool so pode com bool");
+                        exit(1);
+                    }
                     $$.label = getempcode("bool");
                     $$.tipo = "bool";
                     $$.traducao = $2.traducao + "\t" + $$.label +
@@ -410,6 +546,15 @@ string gerar_declaracoes(){
     //variaveis de usuário em de sistema
     for(auto const& [id, simb] : tabela_simbolos) {
         texto += "\t" + simb.tipo + " " + simb.label + "; //user:" + id + "\n";
+    }
+
+    //variaveis de sistema 
+    for(int i=1; i<=tipos_temporarios.size(); i++){
+        texto += "\t" + tipos_temporarios[i-1] + " t" + std::to_string(i) + ";\n";
+    }
+
+    //inicialização
+    for(auto const& [id, simb] : tabela_simbolos) {
         if(simb.tipo == "int")
             texto += "\t" + simb.label + " = 0; //inicialização\n";
         else if(simb.tipo == "float")
@@ -419,34 +564,26 @@ string gerar_declaracoes(){
         else if(simb.tipo == "char")
             texto += "\t" + simb.label + " = ' '; //inicialização\n";
     }
-
-    //variaveis de sistema 
-    for(int i=1; i<=tipos_temporarios.size(); i++){
-        texto += "\t" + tipos_temporarios[i-1] + " t" + std::to_string(i) + ";\n";
-    }
     return texto;
 }
 
 
-string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string &label_out2, string &tipo_res) {
-    string trad = e1.traducao + e2.traducao;
-    label_out1 = e1.label;
-    label_out2 = e2.label;
+string aplicar_coercao(atributos &e1, atributos &e2, string &operando1, string &operando2, string &tipo_resultante) {
+    string linha_conversao;
+    operando1 = e1.label;
+    operando2 = e2.label;
 
-    if (e1.tipo == e2.tipo) {
-        tipo_res = e1.tipo;
-    } else if (e1.tipo == "float" && e2.tipo == "int") {
-        tipo_res = "float";
-        label_out2 = getempcode("float");
-        trad += "\t" + label_out2 + " = (float) " + e2.label + ";\n";
-    } else if (e1.tipo == "int" && e2.tipo == "float") {
-        tipo_res = "float";
-        label_out1 = getempcode("float");
-        trad += "\t" + label_out1 + " = (float) " + e1.label + ";\n";
-    } else {
-        yyerror("Erro: Operação entre tipos incompatíveis");
+    // Conversão Implícita
+    if (e1.tipo != tipo_resultante) {
+        operando1 = getempcode(tipo_resultante); 
+        linha_conversao = "\t" + operando1 + " = (" + tipo_resultante + ") "  + e1.label + ";\n";
     }
-    return trad;
+    if (e2.tipo != tipo_resultante) {
+        operando2 = getempcode(tipo_resultante);
+        linha_conversao = "\t" + operando2 + " = (" + tipo_resultante + ") "  + e2.label + ";\n";
+    }
+
+    return linha_conversao;
 }
 
 void imprimir_codigo_gerado(){
