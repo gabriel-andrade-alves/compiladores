@@ -33,11 +33,14 @@ CHAR \'(.|\\.)\'
 "ler"           { return TK_LER; }
 
         /* Tokens condicionais */
-"if"      { return TK_IF; }
-"else"     { return TK_ELSE; }
+"if"            { return TK_IF; }
+"else"          { return TK_ELSE; }
+
+        /* Tokens de repetição*/
+"while"         {return TK_WHILE; }
 
         /* Números e identificador */
-{FLOAT}     { yylval.label = yytext; return TK_FLOAT; }
+{FLOAT}         { yylval.label = yytext; return TK_FLOAT; }
 {INT}		{ yylval.label = yytext; return TK_INT; }
 {ID}		{ yylval.label = yytext; return TK_ID; }
 
@@ -67,6 +70,7 @@ CHAR \'(.|\\.)\'
 "<"             {yylval.label = yytext; return TK_REL; }
 "=="            {return TK_EQ; }
 "!="            {return TK_DIF; }
+
 
 
         /* Operadores lógicos*/

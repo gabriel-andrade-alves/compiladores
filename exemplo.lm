@@ -1,14 +1,8 @@
 main(){
-    int nota;
-    nota = 69;
+    int i;
 
-    if (nota >= 90) {
-        imprime(1); // Conceito A
-    } else {
-        if (nota >= 70) {
-            imprime(2); // Conceito B -> Deve executar este aqui
-        } else {
-            imprime(3); // Conceito C
-        }
+    while(i<=3){
+        imprime(i);
+        i = i+1;
     }
 }

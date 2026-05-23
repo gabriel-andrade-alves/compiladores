@@ -142,6 +142,10 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_ELSE
 
 
+//Repetição
+%token TK_WHILE
+
+
 %start S
 
 
@@ -348,6 +352,25 @@ CMD             :TIPO TK_ID ';' //Declaração
                                   + $7.traducao 
                                   + "\t" + label_fim + ":\n";
                 }
+                
+    /* While */
+            | TK_WHILE '(' E ')' CORPO_CONDICIONAL
+                {
+                    if ($3.tipo != "bool") {
+                        yyerror("Erro semântico: A condição do 'while' deve ser do tipo bool.");
+                        exit(1);
+                    }
+
+                    string label_inicio = get_new_label();
+                    string label_fim = get_new_label();
+
+                    $$.traducao = "\t" + label_inicio + ":\n"
+                                  + $3.traducao 
+                                  + "\tif (!" + $3.label + ") goto " + label_fim + ";\n"
+                                  + $5.traducao 
+                                  + "\tgoto " + label_inicio + ";\n"
+                                  + "\t" + label_fim + ":\n";
+                }
                 ;
 
 
@@ -357,6 +380,8 @@ CMD             :TIPO TK_ID ';' //Declaração
                             $$.traducao = $1.traducao;
                         }
                         ;
+
+
 
     /* Expressão */
 
