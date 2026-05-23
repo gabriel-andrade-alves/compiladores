@@ -21,13 +21,30 @@ struct simbolo
 {
     string label;
     string tipo;
+    string escopo; 
+};
+
+
+// facilita impressão final das declarações
+struct declaracao_aux {
+    string tipo;
+    string label;
+    string id_original;
 };
 
 
 int var_temp_qnt;
 string codigo_gerado;
 vector<string> tipos_temporarios;
-unordered_map<string, simbolo> tabela_simbolos; 
+
+
+vector<unordered_map<string, simbolo>> pilha_tabelas;
+
+// para organizar a saída do código c--
+vector<declaracao_aux> todas_variaveis_globais;
+vector<declaracao_aux> todas_variaveis_locais;
+
+int contador_escopos = 0;
 
 string matriz_conversao_implicita[4][4] = {
     //          int       float      char      bool
@@ -57,9 +74,15 @@ map<string, int> tipo_para_id = {
 int yylex(void);
 int yyerror(string);
 string getempcode(string tipo);
-string gerar_declaracoes();
+
+string gerar_declaracoes_globais();
+string gerar_declaracoes_locais();
+
 void declarar_variavel(string nome, string tipo);
 simbolo buscar_simbolo(string nome);
+
+void abrir_escopo();
+void fechar_escopo();
 
 string get_tipo_result(string t1, string t2) { return matriz_conversao_implicita[tipo_para_id[t1]][tipo_para_id[t2]]; } 
 string get_tipo_atribuicao(string t1, string t2) { return matriz_atribuicao[tipo_para_id[t1]][tipo_para_id[t2]]; } 
@@ -117,20 +140,53 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 
 %%
 
-S                   : PROGRAMA
+
+
+S                   : CONFIG_GLOBAL PROGRAMA
+                    ;
+
+// inicialização do escopo global
+CONFIG_GLOBAL       : { pilha_tabelas.push_back(unordered_map<string, simbolo>()); }
+                    ;
+
+PROGRAMA            : DECLARACOES_GLOBAIS FUNCAO_MAIN
+                    ;
+
+DECLARACOES_GLOBAIS : DECLARACOES_GLOBAIS DECLARACAO_GLOBAL
+                    |
+                    ;
+
+DECLARACAO_GLOBAL   : TIPO TK_ID ';'
                     {
-                        codigo_gerado = codigo_gerado
-                                        + "#include <stdio.h>\n" 
+                        declarar_variavel($2.label, $1.tipo);
+                    }
+                    ;
+
+FUNCAO_MAIN         : TK_ID '(' ')' BLOCO
+                    {
+                        if ($2.label != "main") {
+                            yyerror("Erro: a função principal deve se chamar 'main'");
+                            exit(1);
+                        }
+                        
+                        codigo_gerado =   string( "#include <stdio.h>\n") 
                                         + "#define true 1\n"
                                         + "#define false 0\n"
                                         + "#define bool int\n\n"
-                                        + "int main(){\n"
-                                        + gerar_declaracoes() + "\n"
-                                        + $1.traducao
+                                        + gerar_declaracoes_globais() + "\n"
+                                        + "int main() {\n"
+                                        + gerar_declaracoes_locais() + "\n"
+                                        + $4.traducao
                                         + "\n\treturn 0;\n}\n";
                     }
+                    ;
 
-PROGRAMA            : COMANDOS
+BLOCO               : '{' { abrir_escopo(); } COMANDOS '}'
+                    {
+                        fechar_escopo();
+                        $$.traducao = $3.traducao;
+                    }
+                    ;
 
 
 COMANDOS            : COMANDOS CMD
@@ -151,7 +207,12 @@ TIPO                : TK_TIPO_INT   { $$.tipo = "int";   }
 			        ;
 
     /* COMANDO */
-CMD             : TIPO TK_ID ';' //Declaração
+CMD             : BLOCO
+                {
+                    $$.traducao = "\t{\n" + $1.traducao + "\t}\n";
+                }
+
+                | TIPO TK_ID ';' //Declaração
                 {
                     declarar_variavel($2.label, $1.tipo);
                     $$.traducao = "";
@@ -181,32 +242,28 @@ CMD             : TIPO TK_ID ';' //Declaração
                     $$.traducao = $3.traducao + linha_conversao +"\t" + s.label + " = " + label_expressao + ";\n";
                 }
 
-                | TIPO TK_ID '=' E ';' //Atribuição e declaração juntas
+                | TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E ';' 
                 {
-                    declarar_variavel($2.label, $1.tipo);
-                    $$.traducao = "";
 
-                    simbolo s = buscar_simbolo($2.label);
+                    simbolo s = buscar_simbolo($2.label); 
                     
-                    string tipo_resultante = get_tipo_atribuicao(s.tipo, $4.tipo);
+                    string tipo_resultante = get_tipo_atribuicao(s.tipo, $5.tipo);
                     string linha_conversao = "";
+                    string label_expressao = $5.label;
 
-                    string label_expressao = $4.label;
-
-                    if (s.tipo != $4.tipo) {
+                    if (s.tipo != $5.tipo) {
                         if (tipo_resultante == "erro") {
                             yyerror("Atribuicao invalida");
                             exit(1);
                         }
                         else {
                             label_expressao = getempcode(tipo_resultante);
-                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") "  +
-                                $4.label + ";\n";
+                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") "  + $5.label + ";\n";
                         }
                     }
 
-                    $$.traducao = $4.traducao + linha_conversao +"\t" + s.label + " = " + label_expressao + ";\n";
-                } 
+                    $$.traducao = $5.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+                }
 
                 | E ';' //Somente expressão
                 {
@@ -541,56 +598,99 @@ string getempcode(string tipo){
 }
 
 
-void declarar_variavel(string nome, string tipo){
-    if(tabela_simbolos.count(nome)){
-        yyerror("Erro: Variável \"" + nome + "\" já declarada");
+void abrir_escopo() {
+    contador_escopos++;
+    pilha_tabelas.push_back(unordered_map<string, simbolo>());
+}
+
+
+void fechar_escopo() {
+    if (pilha_tabelas.size() > 1) {
+        pilha_tabelas.pop_back();
+    } else {
+        yyerror("Erro: IMPOSSÍVEL fechar escopo global.");
         exit(1);
     }
-    else{
-        string variavel_usuario_sistema = "u_" + nome; 
-        //souluciona conflito com variável de usuário e sistema com nomes iguais
-        simbolo simb;
-        simb.tipo = tipo;
-        simb.label = variavel_usuario_sistema;
-        tabela_simbolos[nome] = simb;
-    }
+}
 
+void declarar_variavel(string nome, string tipo){
+    // Checa duplicidade apenas no escopo atual
+    if(pilha_tabelas.back().count(nome)){
+        yyerror("Erro: Variável \"" + nome + "\" já declarada neste escopo");
+        exit(1);
+    }
+    
+    simbolo simb;
+    simb.tipo = tipo;
+    
+    // Se só tem 1 elemento = escopo global
+    if (pilha_tabelas.size() == 1) {
+        simb.label = "g_" + nome; // prefixo 'g_' para globais
+        simb.escopo = "global";
+        pilha_tabelas.back()[nome] = simb;
+        
+        declaracao_aux decl = {tipo, simb.label, nome};
+        todas_variaveis_globais.push_back(decl);
+    } 
+    else {
+        // Escopos locais ganham sufixo para evitar colisão
+        simb.label = "u_" + nome + "_escopo" + to_string(contador_escopos);
+        simb.escopo = "local";
+        pilha_tabelas.back()[nome] = simb;
+        
+        declaracao_aux decl = {tipo, simb.label, nome};
+        todas_variaveis_locais.push_back(decl);
+    }
 }
 
 
 simbolo buscar_simbolo(string nome){
-    if(tabela_simbolos.count(nome)){
-        return tabela_simbolos[nome];
-    } else{
-        yyerror("Erro: Variável \"" + nome + "\" não declarada");
-        exit(1);
+    // Varredura Top-Down (do escopo mais interno até o global no índice 0)
+    for (int i = pilha_tabelas.size() - 1; i >= 0; i--) {
+        if (pilha_tabelas[i].count(nome)) {
+            return pilha_tabelas[i][nome];
+        }
     }
+    yyerror("Erro: Variável \"" + nome + "\" não declarada");
+    exit(1);
 }
 
 
-string gerar_declaracoes(){
+string gerar_declaracoes_globais(){
     string texto = "";
+    for(auto const& decl : todas_variaveis_globais) {
+        string inicializacao = " = 0;";
+        if(decl.tipo == "float") inicializacao = " = 0.0;";
+        else if(decl.tipo == "bool") inicializacao = " = false;";
+        else if(decl.tipo == "char") inicializacao = " = ' ';";
+        
+        texto += decl.tipo + " " + decl.label + inicializacao + " // global user:" + decl.id_original + "\n";
+    }
+    return texto;
+}
 
-    //variaveis de usuário em de sistema
-    for(auto const& [id, simb] : tabela_simbolos) {
-        texto += "\t" + simb.tipo + " " + simb.label + "; //user:" + id + "\n";
+string gerar_declaracoes_locais(){
+    string texto = "";
+    
+    for(auto const& decl : todas_variaveis_locais) {
+        texto += "\t" + decl.tipo + " " + decl.label + "; // local user:" + decl.id_original + "\n";
     }
 
-    //variaveis de sistema 
-    for(int i=1; i<=tipos_temporarios.size(); i++){
-        texto += "\t" + tipos_temporarios[i-1] + " t" + std::to_string(i) + ";\n";
+    texto += "";
+    for(int i = 1; i <= tipos_temporarios.size(); i++){
+        texto += "\t" + tipos_temporarios[i-1] + " t" + to_string(i) + ";\n";
     }
 
-    //inicialização
-    for(auto const& [id, simb] : tabela_simbolos) {
-        if(simb.tipo == "int")
-            texto += "\t" + simb.label + " = 0; //inicialização\n";
-        else if(simb.tipo == "float")
-            texto += "\t" + simb.label + " = 0.0; //inicialização\n";
-        else if(simb.tipo == "bool")
-            texto += "\t" + simb.label + " = false; //inicialização\n";
-        else if(simb.tipo == "char")
-            texto += "\t" + simb.label + " = ' '; //inicialização\n";
+    texto += "";
+    for(auto const& decl : todas_variaveis_locais) {
+        if(decl.tipo == "int")
+            texto += "\t" + decl.label + " = 0;\n";
+        else if(decl.tipo == "float")
+            texto += "\t" + decl.label + " = 0.0;\n";
+        else if(decl.tipo == "bool")
+            texto += "\t" + decl.label + " = false;\n";
+        else if(decl.tipo == "char")
+            texto += "\t" + decl.label + " = ' ';\n";
     }
     return texto;
 }

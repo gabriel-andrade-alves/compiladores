@@ -1,1 +1,32 @@
-int a = 2-1;
+int global_status;
+bool global_flag;
+
+main(){
+    global_status = 1;
+    global_flag = true;
+    
+    int valor;
+    valor = 10;
+    
+    imprime(global_flag);
+    
+    {
+        float valor; 
+        valor = 20.5;
+        
+        bool condicao;
+        condicao = (valor > (float) 10) && global_flag; 
+        
+        imprime(condicao); 
+        
+        {
+            char valor;
+            valor = 'A';
+            imprime(valor); 
+        }
+        
+        imprime(valor); 
+    }
+    
+    imprime(valor); 
+}
