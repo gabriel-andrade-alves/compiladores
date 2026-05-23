@@ -1,32 +1,14 @@
-int global_status;
-bool global_flag;
-
 main(){
-    global_status = 1;
-    global_flag = true;
-    
-    int valor;
-    valor = 10;
-    
-    imprime(global_flag);
-    
-    {
-        float valor; 
-        valor = 20.5;
-        
-        bool condicao;
-        condicao = (valor > (float) 10) && global_flag; 
-        
-        imprime(condicao); 
-        
-        {
-            char valor;
-            valor = 'A';
-            imprime(valor); 
+    int nota;
+    nota = 69;
+
+    if (nota >= 90) {
+        imprime(1); // Conceito A
+    } else {
+        if (nota >= 70) {
+            imprime(2); // Conceito B -> Deve executar este aqui
+        } else {
+            imprime(3); // Conceito C
         }
-        
-        imprime(valor); 
     }
-    
-    imprime(valor); 
 }

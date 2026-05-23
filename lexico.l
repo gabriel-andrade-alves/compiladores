@@ -9,7 +9,7 @@ DIGITOS [1-9]
 LETRA [A-Za-z_]
 
 DELIM {ESPACO}+
-INT {DIGITOS}{DIGITO}*
+INT {DIGITO}{DIGITO}*
 FLOAT {DIGITOS}{DIGITO}*"."{DIGITO}+
 ID {LETRA}({LETRA}|{DIGITO})*
 CHAR \'(.|\\.)\'
@@ -31,6 +31,10 @@ CHAR \'(.|\\.)\'
         /* Imprime e leia */
 "imprime"       { return TK_IMPRIME; }
 "ler"           { return TK_LER; }
+
+        /* Tokens condicionais */
+"if"      { return TK_IF; }
+"else"     { return TK_ELSE; }
 
         /* Números e identificador */
 {FLOAT}     { yylval.label = yytext; return TK_FLOAT; }
@@ -70,6 +74,10 @@ CHAR \'(.|\\.)\'
 "&&"            {return TK_AND; }
 "||"            {return TK_OR; }
 "!"             {return *yytext; }
+
+        /* Comentario */
+"§".*          {}
+"//".*          {}
 
 
 

@@ -34,6 +34,7 @@ struct declaracao_aux {
 
 
 int var_temp_qnt;
+int label_qnt;
 string codigo_gerado;
 vector<string> tipos_temporarios;
 
@@ -74,6 +75,7 @@ map<string, int> tipo_para_id = {
 int yylex(void);
 int yyerror(string);
 string getempcode(string tipo);
+string get_new_label();
 
 string gerar_declaracoes_globais();
 string gerar_declaracoes_locais();
@@ -133,6 +135,11 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 //comandos
 %token TK_IMPRIME
 %token TK_LER
+
+
+//condicionais
+%token TK_IF
+%token TK_ELSE
 
 
 %start S
@@ -207,12 +214,7 @@ TIPO                : TK_TIPO_INT   { $$.tipo = "int";   }
 			        ;
 
     /* COMANDO */
-CMD             : BLOCO
-                {
-                    $$.traducao = "\t{\n" + $1.traducao + "\t}\n";
-                }
-
-                | TIPO TK_ID ';' //Declaração
+CMD             :TIPO TK_ID ';' //Declaração
                 {
                     declarar_variavel($2.label, $1.tipo);
                     $$.traducao = "";
@@ -242,7 +244,7 @@ CMD             : BLOCO
                     $$.traducao = $3.traducao + linha_conversao +"\t" + s.label + " = " + label_expressao + ";\n";
                 }
 
-                | TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E ';' 
+                | TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E ';' //atribuição + declaração
                 {
 
                     simbolo s = buscar_simbolo($2.label); 
@@ -270,7 +272,9 @@ CMD             : BLOCO
                     $$.traducao = $1.traducao;
                 }
 
-                | TK_IMPRIME '(' E ')' ';' //Comando de impressão
+
+    /*  Comandos de impressão e leitura  */
+                | TK_IMPRIME '(' E ')' ';' 
                 {
                     string formato;
                     if($3.tipo == "int")
@@ -285,7 +289,7 @@ CMD             : BLOCO
                     $$.traducao = $3.traducao + "\t" + "printf(\"" + formato + "\\n\", " + $3.label + ");\n";
                 }
 
-                | TK_LER '(' TK_ID ')' ';' //Comando de leitura
+                | TK_LER '(' TK_ID ')' ';' 
                 {
                     simbolo s = buscar_simbolo($3.label);
                     string formato;
@@ -302,7 +306,57 @@ CMD             : BLOCO
                     $$.traducao = $3.traducao + "\t" + "scanf(\"" + formato + "\"," + " &" + s.label + ");\n";     
 
                 }
+
+    /*  Bloco  */
+                | BLOCO
+                {
+                    $$.traducao = "\t{\n" + $1.traducao + "\t}\n";
+                }
+
+    /* Comandos condicionais */
+                
+                | TK_IF '(' E ')' CORPO_CONDICIONAL
+                {
+                    if ($3.tipo != "bool") {
+                        yyerror("Erro semântico: A condição do 'if' deve ser do tipo bool.");
+                        exit(1);
+                    }
+
+                    string label_fim = get_new_label();
+
+                    $$.traducao = $3.traducao 
+                                  + "\tif (!" + $3.label + ") goto " + label_fim + ";\n"
+                                  + $5.traducao 
+                                  + "\t" + label_fim + ":\n";
+                }
+
+                | TK_IF '(' E ')' CORPO_CONDICIONAL TK_ELSE CORPO_CONDICIONAL
+                {
+                    if ($3.tipo != "bool") {
+                        yyerror("Erro semântico: A condição do 'if' deve ser do tipo bool.");
+                        exit(1);
+                    }
+
+                    string label_else = get_new_label();
+                    string label_fim = get_new_label();
+
+                    $$.traducao = $3.traducao 
+                                  + "\tif (!" + $3.label + ") goto " + label_else + ";\n"
+                                  + $5.traducao 
+                                  + "\tgoto " + label_fim + ";\n"
+                                  + "\t" + label_else + ":\n"
+                                  + $7.traducao 
+                                  + "\t" + label_fim + ":\n";
+                }
                 ;
+
+
+
+        CORPO_CONDICIONAL   : CMD
+                        {
+                            $$.traducao = $1.traducao;
+                        }
+                        ;
 
     /* Expressão */
 
@@ -597,6 +651,10 @@ string getempcode(string tipo){
     return "t" + to_string(var_temp_qnt);
 }
 
+string get_new_label() {
+    label_qnt++;
+    return "L" + to_string(label_qnt);
+}
 
 void abrir_escopo() {
     contador_escopos++;
