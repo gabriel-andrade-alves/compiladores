@@ -9,8 +9,8 @@ DIGITOS [1-9]
 LETRA [A-Za-z_]
 
 DELIM {ESPACO}+
-INT [-]?{DIGITOS}{DIGITO}*
-FLOAT [-]?{DIGITOS}{DIGITO}*"."{DIGITO}+
+INT {DIGITOS}{DIGITO}*
+FLOAT {DIGITOS}{DIGITO}*"."{DIGITO}+
 ID {LETRA}({LETRA}|{DIGITO})*
 CHAR \'(.|\\.)\'
 
@@ -45,7 +45,7 @@ CHAR \'(.|\\.)\'
         /* Atribuição, parênteses e ;  */
 "="             {return *yytext; }
 ";"             {return *yytext; }
-[()]            {return *yytext; }
+[(){}]          {return *yytext; }
 
 
         /* Operadores aritméticos*/

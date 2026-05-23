@@ -102,6 +102,7 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %left TK_REL
 %left '+' '-'
 %left '*' '/'
+%right UMINUS
 %right CAST_PREC
 %right '!'
 
@@ -180,7 +181,7 @@ CMD             : TIPO TK_ID ';' //Declaração
                     $$.traducao = $3.traducao + linha_conversao +"\t" + s.label + " = " + label_expressao + ";\n";
                 }
 
-                | TIPO TK_ID '=' E ';'
+                | TIPO TK_ID '=' E ';' //Atribuição e declaração juntas
                 {
                     declarar_variavel($2.label, $1.tipo);
                     $$.traducao = "";
@@ -207,12 +208,12 @@ CMD             : TIPO TK_ID ';' //Declaração
                     $$.traducao = $4.traducao + linha_conversao +"\t" + s.label + " = " + label_expressao + ";\n";
                 } 
 
-                | E ';'
+                | E ';' //Somente expressão
                 {
                     $$.traducao = $1.traducao;
                 }
 
-                | TK_IMPRIME '(' E ')' ';'
+                | TK_IMPRIME '(' E ')' ';' //Comando de impressão
                 {
                     string formato;
                     if($3.tipo == "int")
@@ -227,7 +228,7 @@ CMD             : TIPO TK_ID ';' //Declaração
                     $$.traducao = $3.traducao + "\t" + "printf(\"" + formato + "\\n\", " + $3.label + ");\n";
                 }
 
-                | TK_LER '(' TK_ID ')' ';'
+                | TK_LER '(' TK_ID ')' ';' //Comando de leitura
                 {
                     simbolo s = buscar_simbolo($3.label);
                     string formato;
@@ -377,6 +378,14 @@ E               : TK_ID
                     $$.tipo = tipo_resultante;
                     $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
                         "\t" + $$.label + " = " + operando1 + " / " + operando2 + ";\n";
+                }
+
+    /*  Menos unário    */
+                | '-' E %prec UMINUS
+                {
+                    $$.label = getempcode($2.tipo);
+                    $$.tipo = $2.tipo;
+                    $$.traducao = $2.traducao + "\t" + $$.label + " = -" + $2.label + ";\n";
                 }
 
     /*    Parênteses    */
