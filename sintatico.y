@@ -131,6 +131,9 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %right CAST_PREC
 %right '!'
 
+%nonassoc IF_SEM_ELSE
+%nonassoc TK_ELSE
+
 
 //comandos
 %token TK_IMPRIME
@@ -278,19 +281,24 @@ CMD             :TIPO TK_ID ';' //Declaração
 
 
     /*  Comandos de impressão e leitura  */
-                | TK_IMPRIME '(' E ')' ';' 
+                | TK_IMPRIME '(' ARGUMENTOS ')' ';' 
                 {
-                    string formato;
-                    if($3.tipo == "int")
-                        formato = "%d";
-                    else if($3.tipo == "float")
-                        formato = "%f";
-                    else if($3.tipo == "char")
-                        formato = "%c";
-                    else if($3.tipo == "bool")
-                        formato = "%d";
+                    // Encontra a posição do caractere especial '|' enviado por ARGUMENTOS
+                    size_t pos = $3.label.find('|');
                     
-                    $$.traducao = $3.traducao + "\t" + "printf(\"" + formato + "\\n\", " + $3.label + ");\n";
+                    // Separa o que está antes (formatos) do que está depois (variáveis)
+                    string formatos = $3.label.substr(0, pos);
+                    string variaveis = $3.label.substr(pos + 1);
+
+                    // $3.traducao contém o código intermediário (ex: "\tt1 = 2;\n")
+                    // Montamos o printf usando as strings limpas
+                    $$.traducao = $3.traducao 
+                                  + string("\t") + "printf(\"" + formatos + "\\n\"";
+                    if(variaveis != ""){
+                        $$.traducao += ", " + variaveis;
+                    }
+
+                    $$.traducao += ");\n";
                 }
 
                 | TK_LER '(' TK_ID ')' ';' 
@@ -310,7 +318,6 @@ CMD             :TIPO TK_ID ';' //Declaração
                     $$.traducao = $3.traducao + "\t" + "scanf(\"" + formato + "\"," + " &" + s.label + ");\n";     
 
                 }
-
     /*  Bloco  */
                 | BLOCO
                 {
@@ -319,7 +326,7 @@ CMD             :TIPO TK_ID ';' //Declaração
 
     /* Comandos condicionais */
                 
-                | TK_IF '(' E ')' CORPO_CONDICIONAL
+                | TK_IF '(' E ')' CORPO_CONDICIONAL %prec IF_SEM_ELSE
                 {
                     if ($3.tipo != "bool") {
                         yyerror("Erro semântico: A condição do 'if' deve ser do tipo bool.");
@@ -354,7 +361,7 @@ CMD             :TIPO TK_ID ';' //Declaração
                 }
                 
     /* While */
-            | TK_WHILE '(' E ')' CORPO_CONDICIONAL
+                | TK_WHILE '(' E ')' CORPO_CONDICIONAL
                 {
                     if ($3.tipo != "bool") {
                         yyerror("Erro semântico: A condição do 'while' deve ser do tipo bool.");
@@ -375,11 +382,46 @@ CMD             :TIPO TK_ID ';' //Declaração
 
 
 
-        CORPO_CONDICIONAL   : CMD
-                        {
+CORPO_CONDICIONAL   : CMD
+                {
                             $$.traducao = $1.traducao;
-                        }
-                        ;
+                }
+                ;
+
+ARGUMENTOS  :   ARGUMENTOS ',' ARG
+                {
+                    size_t posA = $1.label.find('|');
+                    size_t posR = $3.label.find('|');
+
+                    string fA = $1.label.substr(0, posA);
+                    string vA = $1.label.substr(posA + 1);
+
+                    string fR = $3.label.substr(0, posR);
+                    string vR = $3.label.substr(posR + 1);
+
+                    $$.traducao = $1.traducao + $3.traducao;
+                    $$.label = fA + ", " + fR + "|" + vA + ", " + vR;
+                }
+                |   ARG
+                    {
+                        $$.traducao = $1.traducao;
+                        $$.label = $1.label;
+                    }
+                |
+            ;
+
+ARG         :   E
+                {
+                    string formato;
+                    if($1.tipo == "int")       formato = "%d";
+                    else if($1.tipo == "float") formato = "%f";
+                    else if($1.tipo == "char")  formato = "%c";
+                    else if($1.tipo == "bool")  formato = "%d";
+                    
+                    $$.traducao = $1.traducao; // Código intermediário gerado em E (ex: t1=2; t2=t1/b...)
+                    $$.label = formato + "|" + $1.label; // "ex: %d|t3"
+                }
+                ;
 
 
 

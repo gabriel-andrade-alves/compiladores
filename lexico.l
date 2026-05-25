@@ -29,7 +29,7 @@ CHAR \'(.|\\.)\'
 "false"         { yylval.label = yytext; return TK_BOOL; }
 
         /* Imprime e leia */
-"imprime"       { return TK_IMPRIME; }
+"imp"       { return TK_IMPRIME; }
 "ler"           { return TK_LER; }
 
         /* Tokens condicionais */
@@ -52,6 +52,7 @@ CHAR \'(.|\\.)\'
         /* Atribuição, parênteses e ;  */
 "="             {return *yytext; }
 ";"             {return *yytext; }
+","             {return *yytext; }
 [(){}]          {return *yytext; }
 
 
