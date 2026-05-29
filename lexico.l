@@ -10,7 +10,7 @@ LETRA [A-Za-z_]
 
 DELIM {ESPACO}+
 INT {DIGITO}{DIGITO}*
-FLOAT {DIGITOS}{DIGITO}*"."{DIGITO}+
+FLOAT {DIGITO}*"."{DIGITO}+
 ID {LETRA}({LETRA}|{DIGITO})*
 CHAR \'(.|\\.)\'
 
@@ -29,7 +29,8 @@ CHAR \'(.|\\.)\'
 "false"         { yylval.label = yytext; return TK_BOOL; }
 
         /* Imprime e leia */
-"imp"       { return TK_IMPRIME; }
+"imp"           {yylval.label = yytext; return TK_IMPRIME; }
+"impl"          {yylval.label = yytext; return TK_IMPRIME; }
 "ler"           { return TK_LER; }
 
         /* Tokens condicionais */
@@ -64,6 +65,11 @@ CHAR \'(.|\\.)\'
 "-"             { return *yytext; }
 "*"             { return *yytext; }
 "/"             { return *yytext; }
+
+        /* Operadores unários */
+
+"++"            { return TK_INC; }
+"--"            { return TK_DEC; }
 
 
         /* Operadores relacionais*/
