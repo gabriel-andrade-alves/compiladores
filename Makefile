@@ -7,6 +7,6 @@ compile:
 	g++ -o glf y.tab.c -Wno-free-nonheap-object
 	./glf < exemplo.lm
 
-exec:
+run:
 	gcc codigo_c--.c -o out
 	./out
