@@ -38,6 +38,9 @@ CHAR \'(.|\\.)\'
 
         /* Tokens de repetição*/
 "while"         {return TK_WHILE; }
+"do"            {return TK_DO; }
+"for"           {return TK_FOR; }
+
 
         /* Números e identificador */
 {FLOAT}         { yylval.label = yytext; return TK_FLOAT; }

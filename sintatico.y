@@ -147,6 +147,7 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 
 //Repetição
 %token TK_WHILE
+%token TK_DO
 
 
 %start S
@@ -380,6 +381,20 @@ CMD             :TIPO TK_ID ';' //Declaração
                 }
                 ;
 
+                | TK_DO CORPO_CONDICIONAL TK_WHILE '(' E ')'
+                {
+                    if ($5.tipo != "bool") {
+                        yyerror("Erro semântico: A condição do 'while' deve ser do tipo bool.");
+                        exit(1);
+                    }
+
+                    string label_inicio = get_new_label();
+                    $$.traducao = "\t" + label_inicio + ":\n"
+                                + $2.traducao   
+                                + $5.traducao   
+                                + "\tif (" + $5.label + ") goto " + label_inicio + ";\n";
+                }
+
 
 
 CORPO_CONDICIONAL   : CMD
@@ -561,6 +576,10 @@ E               : TK_ID
     /*  Menos unário    */
                 | '-' E %prec UMINUS
                 {
+                    if($2.tipo != "int" ||$2.tipo != "float" ){
+                        yyerror("Menos unário somente com int ou float");
+                        exit(1);
+                    }
                     $$.label = getempcode($2.tipo);
                     $$.tipo = $2.tipo;
                     $$.traducao = $2.traducao + "\t" + $$.label + " = -" + $2.label + ";\n";
@@ -840,8 +859,6 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &operando1, string &
 }
 
 void imprimir_codigo_gerado(){
-    cout << codigo_gerado;
-
     ofstream arquivo("codigo_c--.c");
 
     if (arquivo.is_open()) {
