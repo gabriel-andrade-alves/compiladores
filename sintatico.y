@@ -130,6 +130,8 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %right UMINUS
 %right CAST_PREC
 %right '!'
+%right TK_INC TK_DEC
+
 
 %nonassoc IF_SEM_ELSE
 %nonassoc TK_ELSE
@@ -148,6 +150,7 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 //Repetição
 %token TK_WHILE
 %token TK_DO
+%token TK_FOR
 
 
 %start S
@@ -291,10 +294,15 @@ CMD             :TIPO TK_ID ';' //Declaração
                     string formatos = $3.label.substr(0, pos);
                     string variaveis = $3.label.substr(pos + 1);
 
-                    // $3.traducao contém o código intermediário (ex: "\tt1 = 2;\n")
-                    // Montamos o printf usando as strings limpas
+                    string newLine;
+
+                    if($1.label == "imp")
+                        newLine = "";
+                    else 
+                        newLine = "\\n";
+
                     $$.traducao = $3.traducao 
-                                  + string("\t") + "printf(\"" + formatos + "\\n\"";
+                                  + string("\t") + "printf(\"" + formatos + newLine + "\"";
                     if(variaveis != ""){
                         $$.traducao += ", " + variaveis;
                     }
@@ -394,6 +402,115 @@ CMD             :TIPO TK_ID ';' //Declaração
                                 + $5.traducao   
                                 + "\tif (" + $5.label + ") goto " + label_inicio + ";\n";
                 }
+
+                | TK_FOR '(' { abrir_escopo(); } FOR_INIT ';' E ';' FOR_INC ')' CORPO_CONDICIONAL { fechar_escopo(); }
+                {
+                    if ($6.tipo != "bool") {
+                        yyerror("Erro semantico: A condicao do 'for' deve ser do tipo bool.");
+                        exit(1);
+                    }
+
+                    string label_inicio = get_new_label();
+                    string label_fim    = get_new_label();
+
+                    $$.traducao = $4.traducao                                               // init
+                                + "\t" + label_inicio + ":\n"                               // L1:
+                                + $6.traducao                                               // código da condição
+                                + "\tif (!" + $6.label + ") goto " + label_fim + ";\n"     // if (!cond) goto L2
+                                + $10.traducao                                              // corpo
+                                + $8.traducao                                               // incremento
+                                + "\tgoto " + label_inicio + ";\n"                         // goto L1
+                                + "\t" + label_fim + ":\n";                                 // L2:
+                }
+
+
+
+            FOR_INIT : TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E
+                    {
+                        simbolo s = buscar_simbolo($2.label);
+                        string tipo_resultante = get_tipo_atribuicao(s.tipo, $5.tipo);
+                        string linha_conversao = "";
+                        string label_expressao = $5.label;
+
+                        if (s.tipo != $5.tipo) {
+                            if (tipo_resultante == "erro") {
+                                yyerror("Atribuicao invalida no for");
+                                exit(1);
+                            }
+                            label_expressao = getempcode(tipo_resultante);
+                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") " + $5.label + ";\n";
+                        }
+
+                        $$.traducao = $5.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+                    }
+
+                    | TK_ID '=' E
+                    {
+                        simbolo s = buscar_simbolo($1.label);
+                        string tipo_resultante = get_tipo_atribuicao(s.tipo, $3.tipo);
+                        string linha_conversao = "";
+                        string label_expressao = $3.label;
+
+                        if (s.tipo != $3.tipo) {
+                            if (tipo_resultante == "erro") {
+                                yyerror("Atribuicao invalida no for");
+                                exit(1);
+                            }
+                            label_expressao = getempcode(tipo_resultante);
+                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") " + $3.label + ";\n";
+                        }
+
+                        $$.traducao = $3.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+                    }
+
+                    |
+                    {
+                        $$.traducao = "";
+                    }
+                    ;
+
+                FOR_INC  : TK_ID TK_INC
+                        {
+                            simbolo s = buscar_simbolo($1.label);
+                            if (s.tipo != "int" && s.tipo != "float") {
+                                yyerror("Operador ++ so pode ser usado com int ou float");
+                                exit(1);
+                            }
+                            string soma;
+                            if(s.tipo == "int")
+                                soma = " + 1";
+                            else
+                                soma = " + 1.0";
+
+                            $$.traducao = "\t" + s.label + " = " + s.label + soma + ";\n";
+                        }
+                        | TK_ID TK_DEC
+                        {
+                            simbolo s = buscar_simbolo($1.label);
+                            if (s.tipo != "int" && s.tipo != "float") {
+                                yyerror("Operador -- so pode ser usado com int ou float");
+                                exit(1);
+                            }
+
+                            string soma;
+                            if(s.tipo == "int")
+                                soma = " - 1";
+                            else
+                                soma = " - 1.0";
+
+                            $$.traducao = "\t" + s.label + " = " + s.label + soma + ";\n";
+                        }
+                        | TK_ID '=' E
+                        {
+                            simbolo s = buscar_simbolo($1.label);
+                            $$.traducao = $3.traducao + "\t" + s.label + " = " + $3.label + ";\n";
+                        }
+                        |   // incremento vazio: for(init ; cond ; )
+                        {
+                            $$.traducao = "";
+                        }
+                        ;
+
 
 
 
@@ -573,7 +690,7 @@ E               : TK_ID
                         "\t" + $$.label + " = " + operando1 + " / " + operando2 + ";\n";
                 }
 
-    /*  Menos unário    */
+    /*  Operadores unários    */
                 | '-' E %prec UMINUS
                 {
                     if($2.tipo != "int" ||$2.tipo != "float" ){
@@ -584,6 +701,88 @@ E               : TK_ID
                     $$.tipo = $2.tipo;
                     $$.traducao = $2.traducao + "\t" + $$.label + " = -" + $2.label + ";\n";
                 }
+                /* ++ e -- pós-fixado*/
+                | TK_ID TK_INC
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    if (s.tipo != "int" && s.tipo != "float") {
+                        yyerror("Operador ++ so pode ser usado com int ou float");
+                        exit(1);
+                    }
+                    string temp = getempcode(s.tipo);
+                    $$.label    = temp;
+                    $$.tipo     = s.tipo;
+
+                    string soma;
+                    if(s.tipo == "int")
+                        soma = " + 1";
+                    else
+                        soma = " + 1.0";
+
+                    // 1º salva o valor antigo em temp, 2º incrementa a variável
+                    $$.traducao = "\t" + temp + " = " + s.label + ";\n"
+                                + "\t" + s.label + " = " + s.label + soma + ";\n";
+                }
+                | TK_ID TK_DEC
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    if (s.tipo != "int" && s.tipo != "float") {
+                        yyerror("Operador -- so pode ser usado com int ou float");
+                        exit(1);
+                    }
+                    string temp = getempcode(s.tipo);
+                    $$.label = temp;
+                    $$.tipo  = s.tipo;
+
+                    string soma;
+                    if(s.tipo == "int")
+                        soma = " - 1";
+                    else
+                        soma = " - 1.0";
+
+                    $$.traducao = "\t" + temp + " = " + s.label + ";\n"
+                                + "\t" + s.label + " = " + s.label + soma + ";\n";
+                }
+                /* ++ e -- pré-fixado*/
+                | TK_INC TK_ID
+                {
+                    simbolo s = buscar_simbolo($2.label);
+                    if (s.tipo != "int" && s.tipo != "float") {
+                        yyerror("Operador ++ so pode ser usado com int ou float");
+                        exit(1);
+                    }
+                    // Incrementa e retorna o novo valor (o próprio s.label)
+                    $$.label = s.label;
+                    $$.tipo  = s.tipo;
+
+                    string soma;
+                    if(s.tipo == "int")
+                        soma = " + 1";
+                    else
+                        soma = " + 1.0";
+
+                    $$.traducao = "\t" + s.label + " = " + s.label + soma + ";\n";
+                }
+
+                | TK_DEC TK_ID
+                {
+                    simbolo s = buscar_simbolo($2.label);
+                    if (s.tipo != "int" && s.tipo != "float") {
+                        yyerror("Operador -- so pode ser usado com int ou float");
+                        exit(1);
+                    }
+                    $$.label = s.label;
+                    $$.tipo  = s.tipo;
+
+                    string soma;
+                    if(s.tipo == "int")
+                        soma = " - 1";
+                    else
+                        soma = " - 1.0";
+
+                    $$.traducao = "\t" + s.label + " = " + s.label + soma + ";\n";
+                }
+
 
     /*    Parênteses    */
                 | '(' E ')'

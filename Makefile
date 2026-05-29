@@ -1,10 +1,12 @@
-all: 	
-		clear
-		flex lexico.l
-		bison -dy sintatico.y
-		g++ -o glf y.tab.c -Wno-free-nonheap-object
+all: compile exec
 
-		./glf < exemplo.lm
-		gcc codigo_c--.c -o out
-		./out
+compile:
+	clear
+	flex lexico.l
+	bison -dy sintatico.y
+	g++ -o glf y.tab.c -Wno-free-nonheap-object
+	./glf < exemplo.lm
 
+exec:
+	gcc codigo_c--.c -o out
+	./out
