@@ -38,8 +38,13 @@ int label_qnt;
 string codigo_gerado;
 vector<string> tipos_temporarios;
 
-
+//pilha de mapas para escopo
 vector<unordered_map<string, simbolo>> pilha_tabelas;
+
+
+//pilha para labels para o break
+vector<string> pilha_break;
+
 
 // para organizar a saída do código c--
 vector<declaracao_aux> todas_variaveis_globais;
@@ -151,6 +156,12 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_WHILE
 %token TK_DO
 %token TK_FOR
+
+
+//Controles de laço de repetição
+%token TK_BREAK
+%token TK_ALL
+%token TK_CONTINUE
 
 
 %start S
@@ -334,7 +345,6 @@ CMD             :TIPO TK_ID ';' //Declaração
                 }
 
     /* Comandos condicionais */
-                
                 | TK_IF '(' E ')' CORPO_CONDICIONAL %prec IF_SEM_ELSE
                 {
                     if ($3.tipo != "bool") {
@@ -370,7 +380,13 @@ CMD             :TIPO TK_ID ';' //Declaração
                 }
                 
     /* While */
-                | TK_WHILE '(' E ')' CORPO_CONDICIONAL
+                | TK_WHILE '(' E ')' 
+                { 
+                    //mid-rule
+                    string lf = get_new_label();
+                    pilha_break.push_back(lf);        
+                }
+                CORPO_CONDICIONAL
                 {
                     if ($3.tipo != "bool") {
                         yyerror("Erro semântico: A condição do 'while' deve ser do tipo bool.");
@@ -378,32 +394,49 @@ CMD             :TIPO TK_ID ';' //Declaração
                     }
 
                     string label_inicio = get_new_label();
-                    string label_fim = get_new_label();
+                    string label_fim    = pilha_break.back();
+                    pilha_break.pop_back();
 
                     $$.traducao = "\t" + label_inicio + ":\n"
-                                  + $3.traducao 
-                                  + "\tif (!" + $3.label + ") goto " + label_fim + ";\n"
-                                  + $5.traducao 
-                                  + "\tgoto " + label_inicio + ";\n"
-                                  + "\t" + label_fim + ":\n";
+                                + $3.traducao
+                                + "\tif (!" + $3.label + ") goto " + label_fim + ";\n"
+                                + $6.traducao
+                                + "\tgoto " + label_inicio + ";\n"
+                                + "\t" + label_fim + ":\n";
                 }
-                ;
+                
 
-                | TK_DO CORPO_CONDICIONAL TK_WHILE '(' E ')'
+    /* do while */
+                | TK_DO
                 {
-                    if ($5.tipo != "bool") {
+                    string lf = get_new_label();
+                    pilha_break.push_back(lf);
+                }
+                CORPO_CONDICIONAL TK_WHILE '(' E ')'
+                {
+                    if ($6.tipo != "bool") {
                         yyerror("Erro semântico: A condição do 'while' deve ser do tipo bool.");
                         exit(1);
                     }
 
                     string label_inicio = get_new_label();
+                    string label_fim    = pilha_break.back();
+                    pilha_break.pop_back();
+
                     $$.traducao = "\t" + label_inicio + ":\n"
-                                + $2.traducao   
-                                + $5.traducao   
-                                + "\tif (" + $5.label + ") goto " + label_inicio + ";\n";
+                                + $3.traducao
+                                + $6.traducao
+                                + "\tif (" + $6.label + ") goto " + label_inicio + ";\n"
+                                + "\t" + label_fim + ":\n";
                 }
 
-                | TK_FOR '(' { abrir_escopo(); } FOR_INIT ';' E ';' FOR_INC ')' CORPO_CONDICIONAL { fechar_escopo(); }
+    /* for */
+                | TK_FOR '(' { abrir_escopo(); } FOR_INIT ';' E ';' FOR_INC ')'
+                {
+                    string lf = get_new_label();
+                    pilha_break.push_back(lf);
+                }
+                CORPO_CONDICIONAL { fechar_escopo(); }
                 {
                     if ($6.tipo != "bool") {
                         yyerror("Erro semantico: A condicao do 'for' deve ser do tipo bool.");
@@ -411,38 +444,85 @@ CMD             :TIPO TK_ID ';' //Declaração
                     }
 
                     string label_inicio = get_new_label();
-                    string label_fim    = get_new_label();
+                    string label_fim    = pilha_break.back();
+                    pilha_break.pop_back();
 
-                    $$.traducao = $4.traducao                                               // init
-                                + "\t" + label_inicio + ":\n"                               // L1:
-                                + $6.traducao                                               // código da condição
-                                + "\tif (!" + $6.label + ") goto " + label_fim + ";\n"     // if (!cond) goto L2
-                                + $10.traducao                                              // corpo
-                                + $8.traducao                                               // incremento
-                                + "\tgoto " + label_inicio + ";\n"                         // goto L1
-                                + "\t" + label_fim + ":\n";                                 // L2:
+                    $$.traducao = $4.traducao
+                                + "\t" + label_inicio + ":\n"
+                                + $6.traducao
+                                + "\tif (!" + $6.label + ") goto " + label_fim + ";\n"
+                                + $11.traducao
+                                + $8.traducao
+                                + "\tgoto " + label_inicio + ";\n"
+                                + "\t" + label_fim + ":\n";
+                }
+    
+        /* break */
+                | TK_BREAK ';'
+                {
+                    if (pilha_break.empty()) {
+                        yyerror("Erro: 'break' fora de um loop.");
+                        exit(1);
+                    }
+                    $$.traducao = "\tgoto " + pilha_break.back() + ";\n";
                 }
 
-
-
-            FOR_INIT : TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E
-                    {
-                        simbolo s = buscar_simbolo($2.label);
-                        string tipo_resultante = get_tipo_atribuicao(s.tipo, $5.tipo);
-                        string linha_conversao = "";
-                        string label_expressao = $5.label;
-
-                        if (s.tipo != $5.tipo) {
-                            if (tipo_resultante == "erro") {
-                                yyerror("Atribuicao invalida no for");
-                                exit(1);
-                            }
-                            label_expressao = getempcode(tipo_resultante);
-                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") " + $5.label + ";\n";
-                        }
-
-                        $$.traducao = $5.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+        /* break n*/
+                | TK_BREAK TK_INT ';'
+                {
+                    if (pilha_break.empty()) {
+                        yyerror("Erro: 'break' fora de um loop.");
+                        exit(1);
                     }
+
+                    int n = stoi($2.label);
+
+                    if (n <= 0) {
+                        yyerror("Erro: 'break' deve receber um numero positivo.");
+                        exit(1);
+                    }
+                    if ((int)pilha_break.size() < n) {
+                        yyerror("Erro: 'break " + $2.label + "' excede o numero de loops ativos (" 
+                                + to_string(pilha_break.size()) + ").");
+                        exit(1);
+                    }
+
+                    string label_alvo = pilha_break[pilha_break.size() - n];
+
+                    $$.traducao = "\tgoto " + label_alvo + ";\n";
+                }
+
+        /* break all*/
+                | TK_BREAK TK_ALL ';'
+                {
+                    if (pilha_break.empty()) {
+                        yyerror("Erro: 'break all' fora de um loop.");
+                        exit(1);
+                    }
+                    $$.traducao = "\tgoto " + pilha_break.front() + ";\n";
+                }
+                ;
+
+
+    /* regras para o for */
+                FOR_INIT : TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E
+                        {
+                            simbolo s = buscar_simbolo($2.label);
+                            string tipo_resultante = get_tipo_atribuicao(s.tipo, $5.tipo);
+                            string linha_conversao = "";
+                            string label_expressao = $5.label;
+
+                            if (s.tipo != $5.tipo) {
+                                if (tipo_resultante == "erro") {
+                                    yyerror("Atribuicao invalida no for");
+                                    exit(1);
+                                }
+                                label_expressao = getempcode(tipo_resultante);
+                                linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") " + $5.label + ";\n";
+                            }
+
+                            $$.traducao = $5.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+                        }
 
                     | TK_ID '=' E
                     {
@@ -467,7 +547,8 @@ CMD             :TIPO TK_ID ';' //Declaração
                     {
                         $$.traducao = "";
                     }
-                    ;
+
+
 
                 FOR_INC  : TK_ID TK_INC
                         {

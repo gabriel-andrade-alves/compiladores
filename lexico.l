@@ -42,6 +42,13 @@ CHAR \'(.|\\.)\'
 "do"            {return TK_DO; }
 "for"           {return TK_FOR; }
 
+        /* Controles de laço de repetição */
+"break"         { return TK_BREAK; }
+"quebra"        { return TK_BREAK; }
+"all"           { return TK_ALL; }
+"tudo"          { return TK_ALL; }
+"continue"      { return TK_CONTINUE; }
+
 
         /* Números e identificador */
 {FLOAT}         { yylval.label = yytext; return TK_FLOAT; }
