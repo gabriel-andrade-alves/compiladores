@@ -13,6 +13,7 @@ INT {DIGITO}{DIGITO}*
 FLOAT {DIGITO}*"."{DIGITO}+
 ID {LETRA}({LETRA}|{DIGITO})*
 CHAR \'(.|\\.)\'
+STRING \"[^\"]*\"
 
 %%
 
@@ -25,6 +26,7 @@ CHAR \'(.|\\.)\'
 "float"         { return TK_TIPO_FLOAT; }
 "char"          {return TK_TIPO_CHAR; }
 "bool"          {return TK_TIPO_BOOL; }   
+"string"        {return TK_TIPO_STRING; }
 "true"          { yylval.label = yytext; return TK_BOOL; }
 "false"         { yylval.label = yytext; return TK_BOOL; }
 
@@ -50,10 +52,11 @@ CHAR \'(.|\\.)\'
 "continue"      { return TK_CONTINUE; }
 
 
-        /* Números e identificador */
+        /* Números, identificador e string*/
 {FLOAT}         { yylval.label = yytext; return TK_FLOAT; }
 {INT}		{ yylval.label = yytext; return TK_INT; }
 {ID}		{ yylval.label = yytext; return TK_ID; }
+{STRING}        { yylval.label = yytext; return TK_STRING; }
 
 
         /* Char*/
@@ -97,7 +100,7 @@ CHAR \'(.|\\.)\'
 "!"             {return *yytext; }
 
         /* Comentario */
-"§".*          {}
+"§".*           {}
 "//".*          {}
 
 

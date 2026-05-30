@@ -15,6 +15,7 @@ struct atributos
 	string label;
 	string traducao;
     string tipo;
+    int tamanho; // usado por string: tamanho
 };
 
 struct simbolo
@@ -53,27 +54,30 @@ vector<declaracao_aux> todas_variaveis_locais;
 
 int contador_escopos = 0;
 
-string matriz_conversao_implicita[4][4] = {
-    //          int       float      char      bool
-    /*int*/   {"int",   "float",   "erro",      "erro"},
-    /*float*/ {"float", "float",   "erro",  	"erro"},
-    /*char*/  {"erro",   "erro",   "erro",      "erro"},
-    /*bool*/  {"erro",   "erro",   "erro",      "erro"}
+string matriz_conversao_implicita[5][5] = {
+    //             int       float      char      bool     string
+    /*int*/    {"int",    "float",   "erro",   "erro",   "erro"},
+    /*float*/  {"float",  "float",   "erro",   "erro",   "erro"},
+    /*char*/   {"erro",   "erro",    "erro",   "erro",   "erro"},
+    /*bool*/   {"erro",   "erro",    "erro",   "erro",   "erro"},
+    /*string*/ {"erro",   "erro",    "erro",   "erro",   "erro"}
 };
 
-string matriz_atribuicao[4][4] = {
-	//          int       float      char      bool
-    /*int*/   {"int",     "int",   "erro",   "erro"},
-    /*float*/ {"float", "float",   "erro",   "erro"},
-    /*char*/  {"erro",   "erro",   "char",   "erro"},
-    /*bool*/  {"erro",   "erro",   "erro",   "bool"}
+string matriz_atribuicao[5][5] = {
+    //             int       float      char      bool     string
+    /*int*/    {"int",    "int",     "erro",   "erro",   "erro"},
+    /*float*/  {"float",  "float",   "erro",   "erro",   "erro"},
+    /*char*/   {"erro",   "erro",    "char",   "erro",   "erro"},
+    /*bool*/   {"erro",   "erro",    "erro",   "bool",   "erro"},
+    /*string*/ {"erro",   "erro",    "erro",   "erro",   "string"}
 };
 
 map<string, int> tipo_para_id = {
-    {"int",   0},
-    {"float", 1},
-    {"char",  2},
-    {"bool",  3}
+    {"int",    0},
+    {"float",  1},
+    {"char",   2},
+    {"bool",   3},
+    {"string", 4}
 };
 
 
@@ -85,6 +89,7 @@ string get_new_label();
 
 string gerar_declaracoes_globais();
 string gerar_declaracoes_locais();
+string gerar_preambulo();
 
 void declarar_variavel(string nome, string tipo);
 simbolo buscar_simbolo(string nome);
@@ -92,8 +97,12 @@ simbolo buscar_simbolo(string nome);
 void abrir_escopo();
 void fechar_escopo();
 
-string get_tipo_result(string t1, string t2) { return matriz_conversao_implicita[tipo_para_id[t1]][tipo_para_id[t2]]; } 
-string get_tipo_atribuicao(string t1, string t2) { return matriz_atribuicao[tipo_para_id[t1]][tipo_para_id[t2]]; } 
+string get_tipo_result(string t1, string t2) {
+    return matriz_conversao_implicita[tipo_para_id[t1]][tipo_para_id[t2]];
+}
+string get_tipo_atribuicao(string t1, string t2) {
+    return matriz_atribuicao[tipo_para_id[t1]][tipo_para_id[t2]];
+}
 
 string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string &label_out2, string &tipo_res);
 %}
@@ -104,6 +113,7 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_FLOAT
 %token TK_CHAR
 %token TK_BOOL
+%token TK_STRING
 
 
 //Tipos
@@ -111,6 +121,7 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_TIPO_FLOAT
 %token TK_TIPO_CHAR
 %token TK_TIPO_BOOL
+%token TK_TIPO_STRING
 
 
 //Identificador
@@ -199,10 +210,7 @@ FUNCAO_MAIN         : TK_ID '(' ')' BLOCO
                             exit(1);
                         }
                         
-                        codigo_gerado =   string( "#include <stdio.h>\n") 
-                                        + "#define true 1\n"
-                                        + "#define false 0\n"
-                                        + "#define bool int\n\n"
+                        codigo_gerado = gerar_preambulo()
                                         + gerar_declaracoes_globais() + "\n"
                                         + "int main() {\n"
                                         + gerar_declaracoes_locais() + "\n"
@@ -230,10 +238,11 @@ COMANDOS            : COMANDOS CMD
                     }
 
     /* Tipos */
-TIPO                : TK_TIPO_INT   { $$.tipo = "int";   }
-			        | TK_TIPO_FLOAT { $$.tipo = "float"; }
-			        | TK_TIPO_CHAR  { $$.tipo = "char";  }
-			        | TK_TIPO_BOOL  { $$.tipo = "bool";  }
+TIPO                : TK_TIPO_INT    { $$.tipo = "int";    }
+			        | TK_TIPO_FLOAT  { $$.tipo = "float";  }
+			        | TK_TIPO_CHAR   { $$.tipo = "char";   }
+			        | TK_TIPO_BOOL   { $$.tipo = "bool";   }
+			        | TK_TIPO_STRING { $$.tipo = "string"; }
 			        ;
 
     /* COMANDO */
@@ -246,48 +255,60 @@ CMD             :TIPO TK_ID ';' //Declaração
                 | TK_ID '=' E ';' //Atribuição
                 {
                     simbolo s = buscar_simbolo($1.label);
-                    
+
                     string tipo_resultante = get_tipo_atribuicao(s.tipo, $3.tipo);
-                    string linha_conversao = "";
-
-                    string label_expressao = $3.label;
-
-                    if (s.tipo != $3.tipo) {
-                        if (tipo_resultante == "erro") {
-                            yyerror("Atribuicao invalida");
-                            exit(1);
-                        }
-                        else {
-                            label_expressao = getempcode(tipo_resultante);
-                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") "  +
-                                $3.label + ";\n";
-                        }
+                    if (tipo_resultante == "erro") {
+                        yyerror("Atribuicao invalida");
+                        exit(1);
                     }
 
-                    $$.traducao = $3.traducao + linha_conversao +"\t" + s.label + " = " + label_expressao + ";\n";
+                    if (tipo_resultante == "string") {
+                        string tsz  = getempcode("int");
+
+                        $$.traducao = $3.traducao
+                                    + "\t" + tsz  + " = " + to_string($3.tamanho) + ";\n"
+                                    + "\t" + "free(" + s.label + ");\n"
+                                    + "\t" + s.label + " = (char*) malloc(" + tsz + ");\n"
+                                    + "\tstrcpy(" + s.label + ", " + $3.label + ");\n";
+                    } else {
+                        string linha_conversao = "";
+                        string label_expressao = $3.label;
+                        if (s.tipo != $3.tipo) {
+                            label_expressao = getempcode(tipo_resultante);
+                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") " + $3.label + ";\n";
+                        }
+                        $$.traducao = $3.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+                    }
                 }
 
                 | TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E ';' //atribuição + declaração
                 {
+                    simbolo s = buscar_simbolo($2.label);
 
-                    simbolo s = buscar_simbolo($2.label); 
-                    
                     string tipo_resultante = get_tipo_atribuicao(s.tipo, $5.tipo);
-                    string linha_conversao = "";
-                    string label_expressao = $5.label;
-
-                    if (s.tipo != $5.tipo) {
-                        if (tipo_resultante == "erro") {
-                            yyerror("Atribuicao invalida");
-                            exit(1);
-                        }
-                        else {
-                            label_expressao = getempcode(tipo_resultante);
-                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") "  + $5.label + ";\n";
-                        }
+                    if (tipo_resultante == "erro") {
+                        yyerror("Atribuicao invalida");
+                        exit(1);
                     }
 
-                    $$.traducao = $5.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+                    if (tipo_resultante == "string") {
+                        string tsz  = getempcode("int");
+
+                        $$.traducao = $5.traducao
+                                    + "\t" + tsz  + " = " + to_string($5.tamanho) + ";\n"
+                                    + "\t" + "free(" + s.label + ");\n"
+                                    + "\t" + s.label + " = (char*) malloc(" + tsz + ");\n"
+                                    + "\tstrcpy(" + s.label + ", " + $5.label + ");\n";
+
+                    } else {
+                        string linha_conversao = "";
+                        string label_expressao = $5.label;
+                        if (s.tipo != $5.tipo) {
+                            label_expressao = getempcode(tipo_resultante);
+                            linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") " + $5.label + ";\n";
+                        }
+                        $$.traducao = $5.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+                    }
                 }
 
                 | E ';' //Somente expressão
@@ -327,17 +348,24 @@ CMD             :TIPO TK_ID ';' //Declaração
                     simbolo s = buscar_simbolo($3.label);
                     string formato;
 
-                    if(s.tipo == "int")
-                        formato = "%d";
-                    else if(s.tipo == "float")
-                        formato = "%f";
-                    else if(s.tipo == "char")
-                        formato = " %c";
-                    else if(s.tipo == "bool")
-                        formato = "%d";
+                    if (s.tipo == "string") {
+                        // leitura dinâmica: __str_read retorna char* alocado com malloc
+                        string tptr = getempcode("string");
+                        $$.traducao = "\t" + tptr + " = __str_read();\n"
+                                    + "\t" + "free(" + s.label + ");\n" 
+                                    + "\t" + s.label + " = " + tptr + ";\n";
+                    } else {
+                        if(s.tipo == "int")
+                            formato = "%d";
+                        else if(s.tipo == "float")
+                            formato = "%f";
+                        else if(s.tipo == "char")
+                            formato = " %c";
+                        else if(s.tipo == "bool")
+                            formato = "%d";
 
-                    $$.traducao = $3.traducao + "\t" + "scanf(\"" + formato + "\"," + " &" + s.label + ");\n";     
-
+                        $$.traducao = string("\t") + "scanf(\"" + formato + "\"," + " &" + s.label + ");\n";
+                    }
                 }
     /*  Bloco  */
                 | BLOCO
@@ -664,10 +692,11 @@ ARGUMENTOS  :   ARGUMENTOS ',' ARG
 ARG         :   E
                 {
                     string formato;
-                    if($1.tipo == "int")       formato = "%d";
+                    if($1.tipo == "int")        formato = "%d";
                     else if($1.tipo == "float") formato = "%f";
                     else if($1.tipo == "char")  formato = "%c";
                     else if($1.tipo == "bool")  formato = "%d";
+                    else if($1.tipo == "string") formato = "%s";
                     
                     $$.traducao = $1.traducao; // Código intermediário gerado em E (ex: t1=2; t2=t1/b...)
                     $$.label = formato + "|" + $1.label; // "ex: %d|t3"
@@ -714,6 +743,21 @@ E               : TK_ID
                     $$.label = getempcode("bool");
                     $$.tipo = "bool";
                     $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n"; 
+                }
+
+                | TK_STRING
+                {
+                    string conteudo = $1.label.substr(1, $1.label.size() - 2);
+                    int tamanho = (int)conteudo.size() + 1; // +1 para '\0'
+
+                    string tsz  = getempcode("int");
+                    string tptr = getempcode("string");
+                    $$.label   = tptr;
+                    $$.tipo    = "string";
+                    $$.tamanho = tamanho;
+                    $$.traducao = "\t" + tsz  + " = " + to_string(tamanho) + ";\n"
+                                + "\t" + tptr + " = (char*) malloc(" + tsz + ");\n"
+                                + "\tstrcpy(" + tptr + ", " + $1.label + ");\n";
                 }
     /*    Operadores aritméticos   */
 
@@ -1118,15 +1162,60 @@ simbolo buscar_simbolo(string nome){
 }
 
 
+string gerar_preambulo() {
+    string s = "";
+    s += "#include <stdio.h>\n";
+    s += "#include <stdlib.h>\n";
+    s += "#include <string.h>\n";
+    s += "#define true 1\n";
+    s += "#define false 0\n";
+    s += "#define bool int\n";
+    s += "\n";
+    s += "/* Le string do usuario caracter a caracter com buffer dinamico */\n";
+    s += "char* __str_read() {\n";
+    s += "\tint cap;\n";
+    s += "\tint len;\n";
+    s += "\tint next;\n";
+    s += "\tchar *buf;\n";
+    s += "\tchar c;\n";
+    s += "\tchar *tmp;\n";
+    s += "\tcap = 32;\n";
+    s += "\tlen = 0;\n";
+    s += "\tbuf = (char*) malloc(cap);\n";
+    s += "\tL_sr_loop:\n";
+    s += "\tc = getchar();\n";
+    s += "\tif (c == '\\n') goto L_sr_end;\n";
+    s += "\tif (c == EOF)  goto L_sr_end;\n";
+    s += "\tnext = len + 1;\n";
+    s += "\tif (next < cap) goto L_sr_store;\n";
+    s += "\tcap = cap + cap;\n";
+    s += "\ttmp = (char*) malloc(cap);\n";
+    s += "\tstrcpy(tmp, buf);\n";
+    s += "\tbuf = tmp;\n";
+    s += "\tL_sr_store:\n";
+    s += "\tbuf[len] = c;\n";
+    s += "\tlen = len + 1;\n";
+    s += "\tgoto L_sr_loop;\n";
+    s += "\tL_sr_end:\n";
+    s += "\tbuf[len] = '\\0';\n";
+    s += "\treturn buf;\n";
+    s += "}\n";
+    s += "\n";
+    return s;
+}
+
 string gerar_declaracoes_globais(){
     string texto = "";
     for(auto const& decl : todas_variaveis_globais) {
-        string inicializacao = " = 0;";
-        if(decl.tipo == "float") inicializacao = " = 0.0;";
-        else if(decl.tipo == "bool") inicializacao = " = false;";
-        else if(decl.tipo == "char") inicializacao = " = ' ';";
-        
-        texto += decl.tipo + " " + decl.label + inicializacao + " // global user:" + decl.id_original + "\n";
+        if(decl.tipo == "string") {
+            texto += "char* " + decl.label + " = NULL; // global user:" + decl.id_original + "\n";
+        } else {
+            string inicializacao = " = 0;";
+            if(decl.tipo == "float") inicializacao = " = 0.0;";
+            else if(decl.tipo == "bool") inicializacao = " = false;";
+            else if(decl.tipo == "char") inicializacao = " = ' ';";
+            texto += decl.tipo + " " + decl.label + inicializacao + " // global user:" + decl.id_original + "\n";
+        }
     }
     return texto;
 }
@@ -1135,15 +1224,20 @@ string gerar_declaracoes_locais(){
     string texto = "";
     
     for(auto const& decl : todas_variaveis_locais) {
-        texto += "\t" + decl.tipo + " " + decl.label + "; // local user:" + decl.id_original + "\n";
+        if(decl.tipo == "string")
+            texto += "\tchar* " + decl.label + "; // local user:" + decl.id_original + "\n";
+        else
+            texto += "\t" + decl.tipo + " " + decl.label + "; // local user:" + decl.id_original + "\n";
     }
 
-    texto += "";
-    for(int i = 1; i <= tipos_temporarios.size(); i++){
-        texto += "\t" + tipos_temporarios[i-1] + " t" + to_string(i) + ";\n";
+    for(int i = 1; i <= (int)tipos_temporarios.size(); i++){
+        string t = tipos_temporarios[i-1];
+        if(t == "string")
+            texto += "\tchar* t" + to_string(i) + ";\n";
+        else
+            texto += "\t" + t + " t" + to_string(i) + ";\n";
     }
 
-    texto += "";
     for(auto const& decl : todas_variaveis_locais) {
         if(decl.tipo == "int")
             texto += "\t" + decl.label + " = 0;\n";
@@ -1153,6 +1247,8 @@ string gerar_declaracoes_locais(){
             texto += "\t" + decl.label + " = false;\n";
         else if(decl.tipo == "char")
             texto += "\t" + decl.label + " = ' ';\n";
+        else if(decl.tipo == "string")
+            texto += "\t" + decl.label + " = NULL;\n";
     }
     return texto;
 }
