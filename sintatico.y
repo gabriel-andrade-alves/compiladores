@@ -42,8 +42,9 @@ vector<string> tipos_temporarios;
 vector<unordered_map<string, simbolo>> pilha_tabelas;
 
 
-//pilha para labels para o break
+//pilha para labels para o break e continue
 vector<string> pilha_break;
+vector<string> pilha_continue;
 
 
 // para organizar a saída do código c--
@@ -380,11 +381,12 @@ CMD             :TIPO TK_ID ';' //Declaração
                 }
                 
     /* While */
-                | TK_WHILE '(' E ')' 
-                { 
-                    //mid-rule
+                | TK_WHILE '(' E ')'
+                {
                     string lf = get_new_label();
-                    pilha_break.push_back(lf);        
+                    string li = get_new_label();
+                    pilha_break.push_back(lf);
+                    pilha_continue.push_back(li);   
                 }
                 CORPO_CONDICIONAL
                 {
@@ -393,9 +395,8 @@ CMD             :TIPO TK_ID ';' //Declaração
                         exit(1);
                     }
 
-                    string label_inicio = get_new_label();
-                    string label_fim    = pilha_break.back();
-                    pilha_break.pop_back();
+                    string label_fim    = pilha_break.back();    pilha_break.pop_back();
+                    string label_inicio = pilha_continue.back(); pilha_continue.pop_back();
 
                     $$.traducao = "\t" + label_inicio + ":\n"
                                 + $3.traducao
@@ -410,7 +411,9 @@ CMD             :TIPO TK_ID ';' //Declaração
                 | TK_DO
                 {
                     string lf = get_new_label();
+                    string li = get_new_label();
                     pilha_break.push_back(lf);
+                    pilha_continue.push_back(li);   
                 }
                 CORPO_CONDICIONAL TK_WHILE '(' E ')'
                 {
@@ -419,9 +422,8 @@ CMD             :TIPO TK_ID ';' //Declaração
                         exit(1);
                     }
 
-                    string label_inicio = get_new_label();
-                    string label_fim    = pilha_break.back();
-                    pilha_break.pop_back();
+                    string label_fim    = pilha_break.back();    pilha_break.pop_back();
+                    string label_inicio = pilha_continue.back(); pilha_continue.pop_back();
 
                     $$.traducao = "\t" + label_inicio + ":\n"
                                 + $3.traducao
@@ -433,8 +435,10 @@ CMD             :TIPO TK_ID ';' //Declaração
     /* for */
                 | TK_FOR '(' { abrir_escopo(); } FOR_INIT ';' E ';' FOR_INC ')'
                 {
-                    string lf = get_new_label();
+                    string lf  = get_new_label();
+                    string linc = get_new_label(); // label para incremento
                     pilha_break.push_back(lf);
+                    pilha_continue.push_back(linc); // continue → incremento
                 }
                 CORPO_CONDICIONAL { fechar_escopo(); }
                 {
@@ -443,18 +447,19 @@ CMD             :TIPO TK_ID ';' //Declaração
                         exit(1);
                     }
 
-                    string label_inicio = get_new_label();
-                    string label_fim    = pilha_break.back();
-                    pilha_break.pop_back();
+                    string label_fim = pilha_break.back();    pilha_break.pop_back();
+                    string label_inc = pilha_continue.back(); pilha_continue.pop_back();
+                    string label_ini = get_new_label();
 
-                    $$.traducao = $4.traducao
-                                + "\t" + label_inicio + ":\n"
-                                + $6.traducao
-                                + "\tif (!" + $6.label + ") goto " + label_fim + ";\n"
-                                + $11.traducao
-                                + $8.traducao
-                                + "\tgoto " + label_inicio + ";\n"
-                                + "\t" + label_fim + ":\n";
+                    $$.traducao = $4.traducao                                              // init
+                                + "\t" + label_ini + ":\n"                                // L_ini:
+                                + $6.traducao                                              // cond
+                                + "\tif (!" + $6.label + ") goto " + label_fim + ";\n"   // if (!cond) goto L_fim
+                                + $11.traducao                                             // corpo
+                                + "\t" + label_inc + ":\n"                                // L_inc:  ← continue vem aqui
+                                + $8.traducao                                              // incremento
+                                + "\tgoto " + label_ini + ";\n"                           // goto L_ini
+                                + "\t" + label_fim + ":\n";                               // L_fim:
                 }
     
         /* break */
@@ -500,6 +505,39 @@ CMD             :TIPO TK_ID ';' //Declaração
                         exit(1);
                     }
                     $$.traducao = "\tgoto " + pilha_break.front() + ";\n";
+                }
+
+
+                | TK_CONTINUE ';'
+                {
+                    if (pilha_continue.empty()) {
+                        yyerror("Erro: 'continue' fora de um loop.");
+                        exit(1);
+                    }
+                    $$.traducao = "\tgoto " + pilha_continue.back() + ";\n";
+                }
+
+                | TK_CONTINUE TK_INT ';'
+                {
+                    if (pilha_continue.empty()) {
+                        yyerror("Erro: 'continue' fora de um loop.");
+                        exit(1);
+                    }
+
+                    int n = stoi($2.label);
+
+                    if (n <= 0) {
+                        yyerror("Erro: 'continue' deve receber um numero positivo.");
+                        exit(1);
+                    }
+                    if ((int)pilha_continue.size() < n) {
+                        yyerror("Erro: 'continue " + $2.label + "' excede o numero de loops ativos ("
+                                + to_string(pilha_continue.size()) + ").");
+                        exit(1);
+                    }
+
+                    string label_alvo = pilha_continue[pilha_continue.size() - n];
+                    $$.traducao = "\tgoto " + label_alvo + ";\n";
                 }
                 ;
 
