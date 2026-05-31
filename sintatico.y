@@ -55,12 +55,12 @@ vector<declaracao_aux> todas_variaveis_locais;
 int contador_escopos = 0;
 
 string matriz_conversao_implicita[5][5] = {
-    //             int       float      char      bool     string
-    /*int*/    {"int",    "float",   "erro",   "erro",   "erro"},
-    /*float*/  {"float",  "float",   "erro",   "erro",   "erro"},
-    /*char*/   {"erro",   "erro",    "erro",   "erro",   "erro"},
-    /*bool*/   {"erro",   "erro",    "erro",   "erro",   "erro"},
-    /*string*/ {"erro",   "erro",    "erro",   "erro",   "erro"}
+    //             int       float      char        bool      string
+    /*int*/    {"int",    "float",   "erro",     "erro",   "erro"  },
+    /*float*/  {"float",  "float",   "erro",     "erro",   "erro"  },
+    /*char*/   {"erro",   "erro",    "string",   "erro",   "string"},
+    /*bool*/   {"erro",   "erro",    "erro",     "erro",   "erro"  },
+    /*string*/ {"erro",   "erro",    "string",   "erro",   "string"}
 };
 
 string matriz_atribuicao[5][5] = {
@@ -266,7 +266,7 @@ CMD             :TIPO TK_ID ';' //Declaração
                         string tsz  = getempcode("int");
 
                         $$.traducao = $3.traducao
-                                    + "\t" + tsz  + " = " + to_string($3.tamanho) + ";\n"
+                                    + "\t" + tsz  + " = __str_len(" + $3.label + ");\n"
                                     + "\t" + "free(" + s.label + ");\n"
                                     + "\t" + s.label + " = (char*) malloc(" + tsz + ");\n"
                                     + "\tstrcpy(" + s.label + ", " + $3.label + ");\n";
@@ -295,7 +295,7 @@ CMD             :TIPO TK_ID ';' //Declaração
                         string tsz  = getempcode("int");
 
                         $$.traducao = $5.traducao
-                                    + "\t" + tsz  + " = " + to_string($5.tamanho) + ";\n"
+                                    + "\t" + tsz  + " = __str_len(" + $5.label + ");\n"
                                     + "\t" + "free(" + s.label + ");\n"
                                     + "\t" + s.label + " = (char*) malloc(" + tsz + ");\n"
                                     + "\tstrcpy(" + s.label + ", " + $5.label + ");\n";
@@ -770,18 +770,60 @@ E               : TK_ID
                         exit(1);
                     }
 
-                    string linha_conversao = "";
+                    if (tipo_resultante == "string") {
+                        // Concatenação: string+string, string+char, char+string, char+char
+                        // Precisamos de buffers temporários de char* para os dois operandos
+                        string op1_ptr = $1.label;
+                        string op2_ptr = $3.label;
+                        string trad_conv = $1.traducao + $3.traducao;
 
-                    string operando1 = $1.label;
-                    string operando2 = $3.label;
+                        // Se E1 é char, converter para string temporária de 2 bytes
+                        if ($1.tipo == "char") {
+                            string tbuf1 = getempcode("string");
+                            trad_conv += "\t" + tbuf1 + " = (char*) malloc(2);\n";
+                            trad_conv += "\t" + tbuf1 + "[0] = " + op1_ptr + ";\n";
+                            trad_conv += "\t" + tbuf1 + "[1] = '\\0';\n";
+                            op1_ptr = tbuf1;
+                        }
 
-                    linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+                        // Se E2 é char, converter para string temporária de 2 bytes
+                        if ($3.tipo == "char") {
+                            string tbuf2 = getempcode("string");
+                            trad_conv += "\t" + tbuf2 + " = (char*) malloc(2);\n";
+                            trad_conv += "\t" + tbuf2 + "[0] = " + op2_ptr + ";\n";
+                            trad_conv += "\t" + tbuf2 + "[1] = '\\0';\n";
+                            op2_ptr = tbuf2;
+                        }
 
+                        // Calcular tamanhos e alocar resultado
+                        string tsz1   = getempcode("int");
+                        string tsz2   = getempcode("int");
+                        string tsz_r  = getempcode("int");
+                        string tresult = getempcode("string");
 
-                    $$.label = getempcode(tipo_resultante);
-                    $$.tipo = tipo_resultante;
-                    $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
-                        "\t" + $$.label + " = " + operando1 + " + " + operando2 + ";\n";
+                        trad_conv += "\t" + tsz1  + " = __str_len(" + op1_ptr + ");\n";
+                        trad_conv += "\t" + tsz2  + " = __str_len(" + op2_ptr + ");\n";
+                        trad_conv += "\t" + tsz_r + " = " + tsz1 + " + " + tsz2 + ";\n";
+                        trad_conv += "\t" + tresult + " = (char*) malloc(" + tsz_r + ");\n";
+                        trad_conv += "\tstrcpy(" + tresult + ", " + op1_ptr + ");\n";
+                        trad_conv += "\tstrcat(" + tresult + ", " + op2_ptr + ");\n";
+
+                        $$.label    = tresult;
+                        $$.tipo     = "string";
+                        $$.tamanho  = 0; // tamanho dinâmico; calculado em runtime
+                        $$.traducao = trad_conv;
+                    } else {
+                        string linha_conversao = "";
+                        string operando1 = $1.label;
+                        string operando2 = $3.label;
+
+                        linha_conversao = aplicar_coercao($1, $3, operando1, operando2, tipo_resultante);
+
+                        $$.label = getempcode(tipo_resultante);
+                        $$.tipo = tipo_resultante;
+                        $$.traducao = $1.traducao + $3.traducao + linha_conversao +
+                            "\t" + $$.label + " = " + operando1 + " + " + operando2 + ";\n";
+                    }
                 }
 
                 | E '-' E
@@ -1175,6 +1217,24 @@ string gerar_preambulo() {
     s += "#define false 0\n";
     s += "#define bool int\n";
     s += "\n";
+    s += "/* Conta o comprimento da string sem usar strlen */\n";
+    s += "int __str_len(char *s) {\n";
+    s += "\tint i;\n";
+    s += "\ti = 0;\n";
+    s += "\tL_sl_loop:\n";
+    s += "\tchar c = s[i];\n";
+    s += "\tbool a1;\n";
+    s += "\ta1 = c == '\\0';\n";
+    s += "\tif (a1) goto L_sl_end;\n";
+    s += "\ti = i + 1;\n";
+    s += "\tgoto L_sl_loop;\n";
+    s += "\tL_sl_end:\n";
+    s += "\ti = i + 1;\n";
+    s += "\treturn i;\n";
+    s += "}\n";
+    s += "\n";
+
+
     s += "/* Le string do usuario caracter a caracter com buffer dinamico */\n";
     s += "char* __str_read() {\n";
     s += "\tint cap;\n";
@@ -1183,18 +1243,25 @@ string gerar_preambulo() {
     s += "\tchar *buf;\n";
     s += "\tchar c;\n";
     s += "\tchar *tmp;\n";
+    s += "\tbool a1;\n";
+    s += "\tbool a2;\n";
+    s += "\tbool a3;\n";
     s += "\tcap = 32;\n";
     s += "\tlen = 0;\n";
     s += "\tbuf = (char*) malloc(cap);\n";
     s += "\tL_sr_loop:\n";
     s += "\tc = getchar();\n";
-    s += "\tif (c == '\\n') goto L_sr_end;\n";
-    s += "\tif (c == EOF)  goto L_sr_end;\n";
+    s += "\ta1 = c == '\\n';\n";
+    s += "\tif (a1) goto L_sr_end;\n";
+    s += "\ta2 = c == EOF;\n";
+    s += "\tif (a2)  goto L_sr_end;\n";
     s += "\tnext = len + 1;\n";
-    s += "\tif (next < cap) goto L_sr_store;\n";
+    s += "\ta3 = next < cap;\n";
+    s += "\tif (a3) goto L_sr_store;\n";
     s += "\tcap = cap + cap;\n";
     s += "\ttmp = (char*) malloc(cap);\n";
     s += "\tstrcpy(tmp, buf);\n";
+    s += "\tfree(buf);\n";
     s += "\tbuf = tmp;\n";
     s += "\tL_sr_store:\n";
     s += "\tbuf[len] = c;\n";
