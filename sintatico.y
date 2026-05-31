@@ -679,7 +679,7 @@ ARGUMENTOS  :   ARGUMENTOS ',' ARG
                     string vR = $3.label.substr(posR + 1);
 
                     $$.traducao = $1.traducao + $3.traducao;
-                    $$.label = fA + ", " + fR + "|" + vA + ", " + vR;
+                    $$.label = fA + fR + "|" + vA + ", " + vR;
                 }
                 |   ARG
                     {
@@ -958,6 +958,10 @@ E               : TK_ID
     /*    Casting       */
                 | '(' TIPO ')' E %prec CAST_PREC
                 {
+                    if($2.tipo == "bool" || $2.tipo == "string"){
+                        yyerror("Operacao de cast invalida");
+                        exit(1);
+                    }
                     $$.tipo = $2.tipo;
                     $$.label = getempcode($2.tipo);
                     $$.traducao = $4.traducao + "\t" + $$.label + " = (" + $2.tipo + ") " + $4.label + ";\n";
