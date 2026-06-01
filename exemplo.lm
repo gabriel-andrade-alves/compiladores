@@ -1,5 +1,23 @@
 main() {
-    string teste = "Teste 1" + " Teste 2 " + 'a';
 
-    impl(teste);
+    int nome = 2;
+
+    switch(nome){
+        case 1:
+            impl(1);
+            if(nome < 10){
+                impl("YES");
+            }
+        case 12:
+            impl(12);
+        case 2:
+            for(int i=0;i<5;i++){
+                impl(i);
+            }
+            impl(2000);
+        default:
+            impl("AA");
+    }
+
+    impl("Cheguei!");
 }
