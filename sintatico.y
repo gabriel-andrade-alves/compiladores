@@ -6,6 +6,7 @@
 #include <unordered_map>   
 #include <map> 
 #include <vector>
+#include <cstring>
 
 using namespace std;
 #define YYSTYPE atributos
@@ -46,6 +47,10 @@ vector<unordered_map<string, simbolo>> pilha_tabelas;
 //pilha para labels para o break e continue
 vector<string> pilha_break;
 vector<string> pilha_continue;
+
+// pilhas para o switch: temporário da expressão e label de fim
+vector<string> pilha_sw_temp;
+vector<string> pilha_sw_fim;
 
 
 // para organizar a saída do código c--
@@ -162,6 +167,12 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 //condicionais
 %token TK_IF
 %token TK_ELSE
+
+//switch
+%token TK_SWITCH
+%token TK_CASE
+%token TK_DEFAULT
+%token TK_PONTOS
 
 
 //Repetição
@@ -408,7 +419,33 @@ CMD             :TIPO TK_ID ';' //Declaração
                                   + "\t" + label_fim + ":\n";
                 }
                 
-    /* While */
+    /* Switch */
+                | TK_SWITCH '(' E ')'
+                {
+                    
+                    if ($3.tipo != "int" && $3.tipo != "char" && $3.tipo != "string") {
+                        yyerror("Erro semântico: 'switch' aceita apenas int, char ou string.");
+                        exit(1);
+                    }
+
+                    string tsw      = getempcode($3.tipo);
+                    string label_fim = get_new_label();
+
+                    pilha_sw_temp.push_back(tsw);
+                    pilha_sw_fim.push_back(label_fim);
+                }
+                '{' CASES '}'
+                {
+                    string tsw      = pilha_sw_temp.back(); pilha_sw_temp.pop_back();
+                    string label_fim = pilha_sw_fim.back();  pilha_sw_fim.pop_back();
+
+                    $$.traducao = $3.traducao
+                                + "\t" + tsw + " = " + $3.label + ";\n"
+                                + $7.label       // testes
+                                + "\tgoto " + label_fim + ";\n"
+                                + $7.traducao    // corpo
+                                + "\t" + label_fim + ":\n";
+                }
                 | TK_WHILE '(' E ')'
                 {
                     string lf = get_new_label();
@@ -464,9 +501,9 @@ CMD             :TIPO TK_ID ';' //Declaração
                 | TK_FOR '(' { abrir_escopo(); } FOR_INIT ';' E ';' FOR_INC ')'
                 {
                     string lf  = get_new_label();
-                    string linc = get_new_label(); // label para incremento
+                    string linc = get_new_label(); 
                     pilha_break.push_back(lf);
-                    pilha_continue.push_back(linc); // continue → incremento
+                    pilha_continue.push_back(linc); 
                 }
                 CORPO_CONDICIONAL { fechar_escopo(); }
                 {
@@ -479,15 +516,15 @@ CMD             :TIPO TK_ID ';' //Declaração
                     string label_inc = pilha_continue.back(); pilha_continue.pop_back();
                     string label_ini = get_new_label();
 
-                    $$.traducao = $4.traducao                                              // init
-                                + "\t" + label_ini + ":\n"                                // L_ini:
-                                + $6.traducao                                              // cond
-                                + "\tif (!" + $6.label + ") goto " + label_fim + ";\n"   // if (!cond) goto L_fim
-                                + $11.traducao                                             // corpo
-                                + "\t" + label_inc + ":\n"                                // L_inc:  ← continue vem aqui
-                                + $8.traducao                                              // incremento
-                                + "\tgoto " + label_ini + ";\n"                           // goto L_ini
-                                + "\t" + label_fim + ":\n";                               // L_fim:
+                    $$.traducao = $4.traducao                                            
+                                + "\t" + label_ini + ":\n"                               
+                                + $6.traducao                                            
+                                + "\tif (!" + $6.label + ") goto " + label_fim + ";\n"   
+                                + $11.traducao                                            
+                                + "\t" + label_inc + ":\n"                                
+                                + $8.traducao                                             
+                                + "\tgoto " + label_ini + ";\n"                           
+                                + "\t" + label_fim + ":\n";                               
                 }
     
         /* break */
@@ -652,7 +689,7 @@ CMD             :TIPO TK_ID ';' //Declaração
                             simbolo s = buscar_simbolo($1.label);
                             $$.traducao = $3.traducao + "\t" + s.label + " = " + $3.label + ";\n";
                         }
-                        |   // incremento vazio: for(init ; cond ; )
+                        |   
                         {
                             $$.traducao = "";
                         }
@@ -666,6 +703,98 @@ CORPO_CONDICIONAL   : CMD
                             $$.traducao = $1.traducao;
                 }
                 ;
+
+
+CASES   : CASES CASE_ITEM
+        {
+            $$.label    = $1.label    + $2.label;
+            $$.traducao = $1.traducao + $2.traducao;
+        }
+        | CASES DEFAULT_ITEM
+        {
+            $$.label    = $1.label    + $2.label;
+            $$.traducao = $1.traducao + $2.traducao;
+        }
+        |
+        {
+            $$.label    = "";
+            $$.traducao = "";
+        }
+        ;
+
+CASE_ITEM
+        : TK_CASE LITERAL_CASE TK_PONTOS COMANDOS
+        {
+            string tsw      = pilha_sw_temp.back();
+            string label_fim = pilha_sw_fim.back();
+
+            string lb   = get_new_label();  // rótulo do corpo deste case
+            string ln   = get_new_label();  // rótulo do próximo teste
+            string tcmp = getempcode("bool");
+
+            string teste;
+            if ($2.tipo == "string") {
+                teste = $2.traducao
+                      + "\t" + tcmp + " = __str_eq(" + tsw + ", " + $2.label + ");\n"
+                      + "\tif (!" + tcmp + ") goto " + ln + ";\n"
+                      + "\tgoto " + lb + ";\n"
+                      + "\t" + ln + ":\n";
+            } else {
+                teste = "\t" + tcmp + " = (" + tsw + " == " + $2.label + ");\n"
+                      + "\tif (!" + tcmp + ") goto " + ln + ";\n"
+                      + "\tgoto " + lb + ";\n"
+                      + "\t" + ln + ":\n";
+            }
+
+            string corpo = "\t" + lb + ":\n"
+                         + $4.traducao
+                         + "\tgoto " + label_fim + ";\n";
+
+            $$.label    = teste;
+            $$.traducao = corpo;
+        }
+        ;
+
+DEFAULT_ITEM
+        : TK_DEFAULT TK_PONTOS COMANDOS
+        {
+            string label_fim = pilha_sw_fim.back();
+
+            string ld = get_new_label();
+
+            $$.label    = "\tgoto " + ld + ";\n";
+            $$.traducao = "\t" + ld + ":\n"
+                        + $3.traducao
+                        + "\tgoto " + label_fim + ";\n";
+        }
+        ;
+
+LITERAL_CASE
+        : TK_INT
+        {
+            $$.label    = $1.label;
+            $$.tipo     = "int";
+            $$.traducao = "";
+        }
+        | TK_CHAR
+        {
+            $$.label    = $1.label;
+            $$.tipo     = "char";
+            $$.traducao = "";
+        }
+        | TK_STRING
+        {
+            string conteudo = $1.label.substr(1, $1.label.size() - 2);
+            int tamanho = (int)conteudo.size() + 1;
+            string tsz  = getempcode("int");
+            string tptr = getempcode("string");
+            $$.label    = tptr;
+            $$.tipo     = "string";
+            $$.traducao = "\t" + tsz  + " = " + to_string(tamanho) + ";\n"
+                        + "\t" + tptr + " = (char*) malloc(" + tsz + ");\n"
+                        + "\tstrcpy(" + tptr + ", " + $1.label + ");\n";
+        }
+        ;
 
 ARGUMENTOS  :   ARGUMENTOS ',' ARG
                 {
@@ -1217,7 +1346,7 @@ string gerar_preambulo() {
     s += "#define false 0\n";
     s += "#define bool int\n";
     s += "\n";
-    s += "/* Conta o comprimento da string sem usar strlen */\n";
+
     s += "int __str_len(char *s) {\n";
     s += "\tint i;\n";
     s += "\ti = 0;\n";
@@ -1234,8 +1363,30 @@ string gerar_preambulo() {
     s += "}\n";
     s += "\n";
 
+    s += "/* Retorna 1 se iguais, 0 se diferentes */\n";
+    s += "bool __str_eq(char *a, char *b) {\n";
+    s += "\tint i;\n";
+    s += "\tchar ca;\n";
+    s += "\tchar cb;\n";
+    s += "\tbool eq;\n";
+    s += "\tbool fim;\n";
+    s += "\ti = 0;\n";
+    s += "\tL_se_loop:\n";
+    s += "\tca = a[i];\n";
+    s += "\tcb = b[i];\n";
+    s += "\teq = ca == cb;\n";
+    s += "\tif (!eq) goto L_se_false;\n";
+    s += "\tfim = ca == '\\0';\n";
+    s += "\tif (fim) goto L_se_true;\n";
+    s += "\ti = i + 1;\n";
+    s += "\tgoto L_se_loop;\n";
+    s += "\tL_se_true:\n";
+    s += "\treturn 1;\n";
+    s += "\tL_se_false:\n";
+    s += "\treturn 0;\n";
+    s += "}\n";
+    s += "\n";
 
-    s += "/* Le string do usuario caracter a caracter com buffer dinamico */\n";
     s += "char* __str_read() {\n";
     s += "\tint cap;\n";
     s += "\tint len;\n";
@@ -1373,6 +1524,3 @@ int yyerror(string MSG){
     cout << MSG << endl;
     exit(0);
 }
-
-
-

@@ -39,6 +39,12 @@ STRING \"[^\"]*\"
 "if"            { return TK_IF; }
 "else"          { return TK_ELSE; }
 
+        /* Tokens switch/case/default */
+"switch"        { return TK_SWITCH; }
+"case"          { return TK_CASE; }
+"default"       { return TK_DEFAULT; }
+":"             { return TK_PONTOS; }
+
         /* Tokens de repetição*/
 "while"         {return TK_WHILE; }
 "do"            {return TK_DO; }
@@ -102,7 +108,6 @@ STRING \"[^\"]*\"
         /* Comentario */
 "§".*           {}
 "//".*          {}
-
 
 
 %%
