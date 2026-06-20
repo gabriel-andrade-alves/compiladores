@@ -1,23 +1,17 @@
+int global;
+
 main() {
 
-    int nome = 2;
+    int i;
+    int j;
+    float a;
 
-    switch(nome){
-        case 1:
-            impl(1);
-            if(nome < 10){
-                impl("YES");
-            }
-        case 12:
-            impl(12);
-        case 2:
-            for(int i=0;i<5;i++){
-                impl(i);
-            }
-            impl(2000);
-        default:
-            impl("AA");
-    }
+    do{
+        i++;
+        if(i <= 5)
+            continue;
+        impl(i);
 
-    impl("Cheguei!");
+    }while(i<10) 
 }
+
