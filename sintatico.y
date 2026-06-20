@@ -381,7 +381,7 @@ CMD             :TIPO TK_ID ';' //Declaração
     /*  Bloco  */
                 | BLOCO
                 {
-                    $$.traducao = "\t{\n" + $1.traducao + "\t}\n";
+                    $$.traducao = "\n\t//{\t\n" + $1.traducao + "\t//}\n";
                 }
 
     /* Comandos condicionais */
@@ -476,9 +476,9 @@ CMD             :TIPO TK_ID ';' //Declaração
                 | TK_DO
                 {
                     string lf = get_new_label();
-                    string li = get_new_label();
+                    string lc = get_new_label();
                     pilha_break.push_back(lf);
-                    pilha_continue.push_back(li);   
+                    pilha_continue.push_back(lc);   
                 }
                 CORPO_CONDICIONAL TK_WHILE '(' E ')'
                 {
@@ -487,11 +487,13 @@ CMD             :TIPO TK_ID ';' //Declaração
                         exit(1);
                     }
 
-                    string label_fim    = pilha_break.back();    pilha_break.pop_back();
-                    string label_inicio = pilha_continue.back(); pilha_continue.pop_back();
+                    string label_fim      = pilha_break.back();    pilha_break.pop_back();
+                    string label_continue = pilha_continue.back(); pilha_continue.pop_back();
+                    string label_inicio   = get_new_label();
 
                     $$.traducao = "\t" + label_inicio + ":\n"
                                 + $3.traducao
+                                + "\t" + label_continue + ":\n"
                                 + $6.traducao
                                 + "\tif (" + $6.label + ") goto " + label_inicio + ";\n"
                                 + "\t" + label_fim + ":\n";
