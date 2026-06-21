@@ -17,15 +17,17 @@ struct atributos
 	string traducao;
     string tipo;
     int tamanho; // usado por string: tamanho
+    vector<string> lista_tipos;   // tipos dos argumentos de uma chamada
+    vector<string> lista_labels;  // labels (já traduzidos) dos argumentos
 };
 
 struct simbolo
 {
     string label;
     string tipo;
-    string escopo; 
+    string escopo;
+    bool referencia = false; // true = 'label' é, na prática, um char** (parâmetro string por referência)
 };
-
 
 // facilita impressão final das declarações
 struct declaracao_aux {
@@ -33,6 +35,25 @@ struct declaracao_aux {
     string label;
     string id_original;
 };
+
+struct funcao_info {
+    string tipo_retorno;        // "int","float","char","bool","string","void"
+    vector<string> tipos_param; // tipos dos parâmetros, na ordem
+    string label;               // nome traduzido, ex: "f_soma"
+};
+
+unordered_map<string, funcao_info> tabela_funcoes;
+
+// dados da função sendo compilada no momento (não há funções aninhadas,
+// então não precisa ser uma pilha)
+string tipo_retorno_atual;
+
+// parâmetros coletados durante o parsing do cabeçalho da função atual
+vector<declaracao_aux> parametros_atual;
+
+// protótipos (forward declarations) e corpos das funções já compiladas
+vector<string> prototipos_funcoes;
+string codigo_funcoes;
 
 
 int var_temp_qnt;
@@ -59,22 +80,24 @@ vector<declaracao_aux> todas_variaveis_locais;
 
 int contador_escopos = 0;
 
-string matriz_conversao_implicita[5][5] = {
-    //             int       float      char        bool      string
-    /*int*/    {"int",    "float",   "erro",     "erro",   "erro"  },
-    /*float*/  {"float",  "float",   "erro",     "erro",   "erro"  },
-    /*char*/   {"erro",   "erro",    "string",   "erro",   "string"},
-    /*bool*/   {"erro",   "erro",    "erro",     "erro",   "erro"  },
-    /*string*/ {"erro",   "erro",    "string",   "erro",   "string"}
+string matriz_conversao_implicita[6][6] = {
+    //             int       float      char        bool      string     void
+    /*int*/    {"int",    "float",   "erro",     "erro",   "erro",   "erro"},
+    /*float*/  {"float",  "float",   "erro",     "erro",   "erro",   "erro"},
+    /*char*/   {"erro",   "erro",    "string",   "erro",   "string", "erro"},
+    /*bool*/   {"erro",   "erro",    "erro",     "erro",   "erro",   "erro"},
+    /*string*/ {"erro",   "erro",    "string",   "erro",   "string", "erro"},
+    /*void*/   {"erro",   "erro",    "erro",     "erro",   "erro",   "erro"}
 };
 
-string matriz_atribuicao[5][5] = {
-    //             int       float      char      bool     string
-    /*int*/    {"int",    "int",     "erro",   "erro",   "erro"},
-    /*float*/  {"float",  "float",   "erro",   "erro",   "erro"},
-    /*char*/   {"erro",   "erro",    "char",   "erro",   "erro"},
-    /*bool*/   {"erro",   "erro",    "erro",   "bool",   "erro"},
-    /*string*/ {"erro",   "erro",    "erro",   "erro",   "string"}
+string matriz_atribuicao[6][6] = {
+    //             int       float      char      bool     string    void
+    /*int*/    {"int",    "int",     "erro",   "erro",   "erro",  "erro"},
+    /*float*/  {"float",  "float",   "erro",   "erro",   "erro",  "erro"},
+    /*char*/   {"erro",   "erro",    "char",   "erro",   "erro",  "erro"},
+    /*bool*/   {"erro",   "erro",    "erro",   "bool",   "erro",  "erro"},
+    /*string*/ {"erro",   "erro",    "erro",   "erro",   "string","erro"},
+    /*void*/   {"erro",   "erro",    "erro",   "erro",   "erro",  "erro"}
 };
 
 map<string, int> tipo_para_id = {
@@ -82,7 +105,8 @@ map<string, int> tipo_para_id = {
     {"float",  1},
     {"char",   2},
     {"bool",   3},
-    {"string", 4}
+    {"string", 4},
+    {"void",   5}
 };
 
 
@@ -97,7 +121,9 @@ string gerar_declaracoes_locais();
 string gerar_preambulo();
 
 void declarar_variavel(string nome, string tipo);
+void declarar_parametro(string nome, string tipo);
 simbolo buscar_simbolo(string nome);
+string acessar_simbolo(const simbolo& s);
 
 void abrir_escopo();
 void fechar_escopo();
@@ -127,6 +153,7 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_TIPO_CHAR
 %token TK_TIPO_BOOL
 %token TK_TIPO_STRING
+%token TK_TIPO_VOID
 
 
 //Identificador
@@ -162,6 +189,7 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 //comandos
 %token TK_IMPRIME
 %token TK_LER
+%token TK_RETURN
 
 
 //condicionais
@@ -205,7 +233,76 @@ PROGRAMA            : DECLARACOES_GLOBAIS FUNCAO_MAIN
                     ;
 
 DECLARACOES_GLOBAIS : DECLARACOES_GLOBAIS DECLARACAO_GLOBAL
+                    | DECLARACOES_GLOBAIS FUNCAO
                     |
+                    ;
+
+FUNCAO              : TIPO TK_ID '('
+                    {
+                        abrir_escopo();           // escopo dos parâmetros
+                        parametros_atual.clear();
+                    }
+                    PARAMETROS ')'
+                    {
+                        if ($2.label == "main") {
+                            yyerror("Erro: 'main' e reservado para o ponto de entrada.");
+                            exit(1);
+                        }
+                        if (tabela_funcoes.count($2.label)) {
+                            yyerror("Erro: funcao \"" + $2.label + "\" ja declarada.");
+                            exit(1);
+                        }
+
+                        funcao_info finfo;
+                        finfo.tipo_retorno = $1.tipo;
+                        finfo.label = "f_" + $2.label;
+                        for (auto const& p : parametros_atual)
+                            finfo.tipos_param.push_back(p.tipo);
+
+                        tabela_funcoes[$2.label] = finfo;
+
+                        tipo_retorno_atual = $1.tipo;
+
+                        // buffers de locais/temporários ficam isolados por função
+                        todas_variaveis_locais.clear();
+                        tipos_temporarios.clear();
+                        var_temp_qnt = 0;
+                    }
+                    BLOCO
+                    {
+                        fechar_escopo();           // fecha escopo dos parâmetros
+
+                        funcao_info& finfo = tabela_funcoes[$2.label];
+
+                        string assinatura = (finfo.tipo_retorno == "void" ? "void" : finfo.tipo_retorno)
+                                           + " " + finfo.label + "(";
+                        for (size_t i = 0; i < parametros_atual.size(); i++) {
+                            if (i > 0) assinatura += ", ";
+                            string tparam = (parametros_atual[i].tipo == "string") 
+                                            ? "char**" : parametros_atual[i].tipo;
+                            assinatura += tparam + " " + parametros_atual[i].label;
+                        }
+                        assinatura += ")";
+
+                        prototipos_funcoes.push_back(assinatura + ";\n");
+
+                        codigo_funcoes += assinatura + " {\n"
+                                        + gerar_declaracoes_locais()
+                                        + "\n"
+                                        + $8.traducao
+                                        + "}\n\n";
+                    }
+                    ;
+
+PARAMETROS          : PARAMETROS ',' PARAMETRO
+                    | PARAMETRO
+                    |
+                    ;
+
+PARAMETRO           : TIPO TK_ID
+                    {
+                        declarar_parametro($2.label, $1.tipo);
+                    }
                     ;
 
 DECLARACAO_GLOBAL   : TIPO TK_ID ';'
@@ -214,18 +311,31 @@ DECLARACAO_GLOBAL   : TIPO TK_ID ';'
                     }
                     ;
 
-FUNCAO_MAIN         : TK_ID '(' ')' BLOCO
+FUNCAO_MAIN         : TK_ID '(' ')'
                     {
-                        if ($2.label != "main") {
-                            yyerror("Erro: a função principal deve se chamar 'main'");
+                        if ($1.label != "main") {
+                            yyerror("Erro: a funcao principal deve se chamar 'main'");
                             exit(1);
                         }
-                        
+
+                        tipo_retorno_atual = "int"; // main se comporta como int
+
+                        todas_variaveis_locais.clear();
+                        tipos_temporarios.clear();
+                        var_temp_qnt = 0;
+                    }
+                    BLOCO
+                    {
+                        string protos = "";
+                        for (auto const& p : prototipos_funcoes) protos += p;
+
                         codigo_gerado = gerar_preambulo()
                                         + gerar_declaracoes_globais() + "\n"
+                                        + protos + "\n"
+                                        + codigo_funcoes
                                         + "int main() {\n"
                                         + gerar_declaracoes_locais() + "\n"
-                                        + $4.traducao
+                                        + $5.traducao
                                         + "\n\treturn 0;\n}\n";
                     }
                     ;
@@ -254,6 +364,7 @@ TIPO                : TK_TIPO_INT    { $$.tipo = "int";    }
 			        | TK_TIPO_CHAR   { $$.tipo = "char";   }
 			        | TK_TIPO_BOOL   { $$.tipo = "bool";   }
 			        | TK_TIPO_STRING { $$.tipo = "string"; }
+                    | TK_TIPO_VOID   { $$.tipo = "void";   }
 			        ;
 
     /* COMANDO */
@@ -263,9 +374,10 @@ CMD             :TIPO TK_ID ';' //Declaração
                     $$.traducao = "";
                 }
 
-                | TK_ID '=' E ';' //Atribuição
+                | TK_ID '=' E ';'
                 {
                     simbolo s = buscar_simbolo($1.label);
+                    string alvo = acessar_simbolo(s);
 
                     string tipo_resultante = get_tipo_atribuicao(s.tipo, $3.tipo);
                     if (tipo_resultante == "erro") {
@@ -274,13 +386,12 @@ CMD             :TIPO TK_ID ';' //Declaração
                     }
 
                     if (tipo_resultante == "string") {
-                        string tsz  = getempcode("int");
-
+                        string tsz = getempcode("int");
                         $$.traducao = $3.traducao
-                                    + "\t" + tsz  + " = __str_len(" + $3.label + ");\n"
-                                    + "\t" + "free(" + s.label + ");\n"
-                                    + "\t" + s.label + " = (char*) malloc(" + tsz + ");\n"
-                                    + "\tstrcpy(" + s.label + ", " + $3.label + ");\n";
+                                    + "\t" + tsz + " = __str_len(" + $3.label + ");\n"
+                                    + "\t" + "free(" + alvo + ");\n"
+                                    + "\t" + alvo + " = (char*) malloc(" + tsz + ");\n"
+                                    + "\tstrcpy(" + alvo + ", " + $3.label + ");\n";
                     } else {
                         string linha_conversao = "";
                         string label_expressao = $3.label;
@@ -288,7 +399,7 @@ CMD             :TIPO TK_ID ';' //Declaração
                             label_expressao = getempcode(tipo_resultante);
                             linha_conversao = "\t" + label_expressao + " = (" + tipo_resultante + ") " + $3.label + ";\n";
                         }
-                        $$.traducao = $3.traducao + linha_conversao + "\t" + s.label + " = " + label_expressao + ";\n";
+                        $$.traducao = $3.traducao + linha_conversao + "\t" + alvo + " = " + label_expressao + ";\n";
                     }
                 }
 
@@ -326,6 +437,39 @@ CMD             :TIPO TK_ID ';' //Declaração
                 {
                     $$.traducao = $1.traducao;
                 }
+    /* return */
+
+|                TK_RETURN E ';'
+                {
+                    if (tipo_retorno_atual == "void") {
+                        yyerror("Erro: funcao void nao pode retornar um valor.");
+                        exit(1);
+                    }
+
+                    string tipo_resultante = get_tipo_atribuicao(tipo_retorno_atual, $2.tipo);
+                    if (tipo_resultante == "erro") {
+                        yyerror("Erro: tipo de retorno incompativel.");
+                        exit(1);
+                    }
+
+                    string linha_conversao = "";
+                    string label_retorno = $2.label;
+                    if (tipo_retorno_atual != $2.tipo) {
+                        label_retorno = getempcode(tipo_retorno_atual);
+                        linha_conversao = "\t" + label_retorno + " = (" + tipo_retorno_atual + ") " + $2.label + ";\n";
+                    }
+
+                    $$.traducao = $2.traducao + linha_conversao + "\treturn " + label_retorno + ";\n";
+                }
+
+                | TK_RETURN ';'
+                {
+                    if (tipo_retorno_atual != "void") {
+                        yyerror("Erro: funcao do tipo '" + tipo_retorno_atual + "' deve retornar um valor.");
+                        exit(1);
+                    }
+                    $$.traducao = "\treturn;\n";
+                }
 
 
     /*  Comandos de impressão e leitura  */
@@ -353,27 +497,23 @@ CMD             :TIPO TK_ID ';' //Declaração
 
                     $$.traducao += ");\n";
                 }
-
-                | TK_LER '(' TK_ID ')' ';' 
+                
+                | TK_LER '(' TK_ID ')' ';'
                 {
                     simbolo s = buscar_simbolo($3.label);
+                    string alvo = acessar_simbolo(s);
                     string formato;
 
                     if (s.tipo == "string") {
-                        // leitura dinâmica: __str_read retorna char* alocado com malloc
                         string tptr = getempcode("string");
                         $$.traducao = "\t" + tptr + " = __str_read();\n"
-                                    + "\t" + "free(" + s.label + ");\n" 
-                                    + "\t" + s.label + " = " + tptr + ";\n";
+                                    + "\t" + "free(" + alvo + ");\n"
+                                    + "\t" + alvo + " = " + tptr + ";\n";
                     } else {
-                        if(s.tipo == "int")
-                            formato = "%d";
-                        else if(s.tipo == "float")
-                            formato = "%f";
-                        else if(s.tipo == "char")
-                            formato = " %c";
-                        else if(s.tipo == "bool")
-                            formato = "%d";
+                        if (s.tipo == "int")   formato = "%d";
+                        else if (s.tipo == "float") formato = "%f";
+                        else if (s.tipo == "char")  formato = " %c";
+                        else if (s.tipo == "bool")  formato = "%d";
 
                         $$.traducao = string("\t") + "scanf(\"" + formato + "\"," + " &" + s.label + ");\n";
                     }
@@ -842,10 +982,74 @@ ARG         :   E
 E               : TK_ID
                 {
                     simbolo simb = buscar_simbolo($1.label);
-                    $$.label = simb.label;
-                    $$.tipo = simb.tipo;
+                    $$.label = acessar_simbolo(simb);   // antes era: simb.label
+                    $$.tipo  = simb.tipo;
                     $$.traducao = "";
-                }    
+                }
+
+    /* chamada função */
+
+                | TK_ID '(' ARGUMENTOS_CHAMADA ')'
+                {
+                    if (!tabela_funcoes.count($1.label)) {
+                        yyerror("Erro: funcao \"" + $1.label + "\" nao declarada.");
+                        exit(1);
+                    }
+                    funcao_info finfo = tabela_funcoes[$1.label];
+
+                    if (finfo.tipos_param.size() != $3.lista_tipos.size()) {
+                        yyerror("Erro: numero de argumentos incompativel na chamada de \"" + $1.label + "\".");
+                        exit(1);
+                    }
+
+                    string trad = $3.traducao;
+                    vector<string> args_finais;
+
+                    for (size_t i = 0; i < finfo.tipos_param.size(); i++) {
+                        string tparam = finfo.tipos_param[i];
+                        string targ   = $3.lista_tipos[i];
+                        string larg   = $3.lista_labels[i];
+
+                        string arg_final;
+
+                        if (tparam == "string") {
+                            if (targ != "string") {
+                                yyerror("Erro: argumento " + to_string(i+1) + " incompativel na chamada de \"" + $1.label + "\".");
+                                exit(1);
+                            }
+                            arg_final = "&" + larg;   // passagem por referência
+                        } else if (tparam != targ) {
+                            string tipo_resultante = get_tipo_atribuicao(tparam, targ);
+                            if (tipo_resultante == "erro") {
+                                yyerror("Erro: argumento " + to_string(i+1) + " incompativel na chamada de \"" + $1.label + "\".");
+                                exit(1);
+                            }
+                            string conv = getempcode(tparam);
+                            trad += "\t" + conv + " = (" + tparam + ") " + larg + ";\n";
+                            arg_final = conv;
+                        } else {
+                            arg_final = larg;
+                        }
+
+                        args_finais.push_back(arg_final);
+                    }
+
+                    string lista_args = "";
+                    for (size_t i = 0; i < args_finais.size(); i++) {
+                        if (i > 0) lista_args += ", ";
+                        lista_args += args_finais[i];
+                    }
+
+                    $$.tipo = finfo.tipo_retorno;
+
+                    if (finfo.tipo_retorno == "void") {
+                        $$.label = "";
+                        $$.traducao = trad + "\t" + finfo.label + "(" + lista_args + ");\n";
+                    } else {
+                        $$.label = getempcode(finfo.tipo_retorno);
+                        $$.traducao = trad + "\t" + $$.label + " = " + finfo.label + "(" + lista_args + ");\n";
+                    }
+                }
                
     /*    Literais    */
                 | TK_INT
@@ -1029,7 +1233,7 @@ E               : TK_ID
     /*  Operadores unários    */
                 | '-' E %prec UMINUS
                 {
-                    if($2.tipo != "int" ||$2.tipo != "float" ){
+                    if($2.tipo != "int" && $2.tipo != "float" ){
                         yyerror("Menos unário somente com int ou float");
                         exit(1);
                     }
@@ -1263,6 +1467,39 @@ E               : TK_ID
                         " = " + " ! " + $2.label + ";\n";
                 }
 
+ARGUMENTOS_CHAMADA : ARGUMENTOS_CHAMADA ',' ARG_CHAMADA
+                    {
+                        $$.traducao = $1.traducao + $3.traducao;
+                        $$.lista_tipos  = $1.lista_tipos;
+                        $$.lista_labels = $1.lista_labels;
+                        $$.lista_tipos.push_back($3.tipo);
+                        $$.lista_labels.push_back($3.label);
+                    }
+                    | ARG_CHAMADA
+                    {
+                        $$.traducao = $1.traducao;
+                        $$.lista_tipos.clear();
+                        $$.lista_labels.clear();
+                        $$.lista_tipos.push_back($1.tipo);
+                        $$.lista_labels.push_back($1.label);
+                    }
+                    |
+                    {
+                        $$.traducao = "";
+                        $$.lista_tipos.clear();
+                        $$.lista_labels.clear();
+                    }
+                    ;
+
+ARG_CHAMADA         : E
+                    {
+                        $$.tipo     = $1.tipo;
+                        $$.label    = $1.label;
+                        $$.traducao = $1.traducao;
+                    }
+                    ;
+
+
 %%
 
 
@@ -1297,6 +1534,12 @@ void fechar_escopo() {
 }
 
 void declarar_variavel(string nome, string tipo){
+    if (tipo == "void") {
+        yyerror("Erro: nao e permitido declarar variavel do tipo 'void'.");
+        exit(1);
+    }
+
+
     // Checa duplicidade apenas no escopo atual
     if(pilha_tabelas.back().count(nome)){
         yyerror("Erro: Variável \"" + nome + "\" já declarada neste escopo");
@@ -1327,6 +1570,29 @@ void declarar_variavel(string nome, string tipo){
 }
 
 
+void declarar_parametro(string nome, string tipo){
+    if (tipo == "void") {
+        yyerror("Erro: parametro nao pode ser do tipo 'void'.");
+        exit(1);
+    }
+    if (pilha_tabelas.back().count(nome)) {
+        yyerror("Erro: parametro \"" + nome + "\" duplicado.");
+        exit(1);
+    }
+
+    simbolo s;
+    s.tipo       = tipo;
+    s.label      = "p_" + nome;
+    s.escopo     = "parametro";
+    s.referencia = (tipo == "string");   // <-- strings passam por referência
+    pilha_tabelas.back()[nome] = s;
+
+    declaracao_aux d = {tipo, s.label, nome};
+    parametros_atual.push_back(d);
+}
+
+
+
 simbolo buscar_simbolo(string nome){
     // Varredura Top-Down (do escopo mais interno até o global no índice 0)
     for (int i = pilha_tabelas.size() - 1; i >= 0; i--) {
@@ -1336,6 +1602,14 @@ simbolo buscar_simbolo(string nome){
     }
     yyerror("Erro: Variável \"" + nome + "\" não declarada");
     exit(1);
+}
+
+
+string acessar_simbolo(const simbolo& s) {
+    if (s.referencia) {
+        return "(*" + s.label + ")";
+    }
+    return s.label;
 }
 
 

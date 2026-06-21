@@ -1,17 +1,12 @@
 int global;
 
+int soma(int a, int b){
+    return a+b;
+}
+
 main() {
+    int resul = soma(1,2);
 
-    int i;
-    int j;
-    float a;
-
-    do{
-        i++;
-        if(i <= 5)
-            continue;
-        impl(i);
-
-    }while(i<10) 
+    impl(resul);
 }
 

@@ -29,11 +29,13 @@ STRING \"[^\"]*\"
 "string"        {return TK_TIPO_STRING; }
 "true"          { yylval.label = yytext; return TK_BOOL; }
 "false"         { yylval.label = yytext; return TK_BOOL; }
+"void"          { return TK_TIPO_VOID; }
 
-        /* Imprime e leia */
+        /* Para comandos */
 "imp"           {yylval.label = yytext; return TK_IMPRIME; }
 "impl"          {yylval.label = yytext; return TK_IMPRIME; }
 "ler"           { return TK_LER; }
+"return"        { return TK_RETURN; }
 
         /* Tokens condicionais */
 "if"            { return TK_IF; }
