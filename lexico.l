@@ -84,6 +84,12 @@ STRING \"[^\"]*\"
 "*"             { return *yytext; }
 "/"             { return *yytext; }
 
+        /* Operadores de atribuição composta */
+"+="            { return TK_MAIS_IGUAL; }
+"-="            { return TK_MENOS_IGUAL; }
+"*="            { return TK_VEZES_IGUAL; }
+"/="            { return TK_DIV_IGUAL; }
+
         /* Operadores unários */
 
 "++"            { return TK_INC; }

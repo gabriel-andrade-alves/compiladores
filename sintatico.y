@@ -220,6 +220,11 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_ALL
 %token TK_CONTINUE
 
+// Operadores compostos
+%token TK_MAIS_IGUAL
+%token TK_MENOS_IGUAL
+%token TK_VEZES_IGUAL
+%token TK_DIV_IGUAL
 
 %start S
 
@@ -397,6 +402,13 @@ TIPO                : TK_TIPO_INT    { $$.tipo = "int";    }
                     | TK_TIPO_VOID   { $$.tipo = "void";   }
 			        ;
 
+
+OP_COMP             : TK_MAIS_IGUAL   { $$.label = "+="; }
+                    | TK_MENOS_IGUAL  { $$.label = "-="; }
+                    | TK_VEZES_IGUAL  { $$.label = "*="; }
+                    | TK_DIV_IGUAL    { $$.label = "/="; }
+                    ;
+
     /* COMANDO */
 CMD             :TIPO TK_ID ';' //Declaração
                 {
@@ -489,6 +501,101 @@ CMD             :TIPO TK_ID ';' //Declaração
                     
                     $$.traducao = $3.traducao + $6.traducao + $9.traducao + calc_offset + linha_conversao + 
                                 "\t" + acessar_simbolo(s) + "[" + t_soma + "] = " + operando_val + ";\n";
+                }
+
+                | TK_ID OP_COMP E ';'
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    string alvo = acessar_simbolo(s);
+
+                    if (s.tipo != "int" && s.tipo != "float") {
+                        yyerror("Operadores compostos so podem ser usados com int ou float.");
+                        exit(1);
+                    }
+
+                    string tipo_res = get_tipo_result(s.tipo, $3.tipo);
+                    if (tipo_res == "erro") {
+                        yyerror("Atribuicao composta invalida.");
+                        exit(1);
+                    }
+
+                    string operando2 = $3.label;
+                    string linha_conversao = "";
+                    if (s.tipo != $3.tipo) {
+                        operando2 = getempcode(tipo_res);
+                        linha_conversao = "\t" + operando2 + " = (" + tipo_res + ") " + $3.label + ";\n";
+                    }
+
+                    // Gera a operacao base (ex: t1 = alvo + op2)
+                    string t_op = getempcode(tipo_res);
+                    string op_aritmetica = "\t" + t_op + " = " + alvo + " " + $2.label.at(0) + " " + operando2 + ";\n";
+
+                    // Atribui o temporário de volta ao alvo (ex: alvo = t1)
+                    $$.traducao = $3.traducao + linha_conversao + op_aritmetica + "\t" + alvo + " = " + t_op + ";\n";
+                }
+
+                | TK_ID '[' E ']' OP_COMP E ';'
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    if (!s.is_array || s.dim2 != 0) { yyerror("Erro: uso incorreto de vetor."); exit(1); }
+                    if ($3.tipo != "int") { yyerror("Erro: indice do vetor deve ser inteiro."); exit(1); }
+                    
+                    if (s.tipo != "int" && s.tipo != "float") {
+                        yyerror("Operadores compostos so podem ser usados com int ou float.");
+                        exit(1);
+                    }
+
+                    string tipo_res = get_tipo_result(s.tipo, $6.tipo);
+                    if (tipo_res == "erro") { yyerror("Atribuicao composta invalida no vetor."); exit(1); }
+
+                    string operando2 = $6.label;
+                    string linha_conversao = "";
+                    if (s.tipo != $6.tipo) {
+                        operando2 = getempcode(tipo_res);
+                        linha_conversao = "\t" + operando2 + " = (" + tipo_res + ") " + $6.label + ";\n";
+                    }
+
+                    string alvo = acessar_simbolo(s) + "[" + $3.label + "]";
+                    string t_op = getempcode(tipo_res);
+                    string op_aritmetica = "\t" + t_op + " = " + alvo + " " + $5.label.at(0) + " " + operando2 + ";\n";
+
+                    $$.traducao = $3.traducao + $6.traducao + linha_conversao + op_aritmetica + 
+                                "\t" + alvo + " = " + t_op + ";\n";
+                }
+
+                | TK_ID '[' E ']' '[' E ']' OP_COMP E ';'
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    if (!s.is_array || s.dim2 == 0) { yyerror("Erro: uso incorreto de matriz."); exit(1); }
+                    if ($3.tipo != "int" || $6.tipo != "int") { yyerror("Erro: indices da matriz devem ser inteiros."); exit(1); }
+                    
+                    if (s.tipo != "int" && s.tipo != "float") {
+                        yyerror("Operadores compostos so podem ser usados com int ou float.");
+                        exit(1);
+                    }
+
+                    string tipo_res = get_tipo_result(s.tipo, $9.tipo);
+                    if (tipo_res == "erro") { yyerror("Atribuicao composta invalida na matriz."); exit(1); }
+
+                    // Calcula o offset da matriz
+                    string t_mult = getempcode("int");
+                    string t_soma = getempcode("int");
+                    string calc_offset = "\t" + t_mult + " = " + $3.label + " * " + to_string(s.dim2) + ";\n"
+                                       + "\t" + t_soma + " = " + t_mult + " + " + $6.label + ";\n";
+                    
+                    string operando2 = $9.label;
+                    string linha_conversao = "";
+                    if (s.tipo != $9.tipo) {
+                        operando2 = getempcode(tipo_res);
+                        linha_conversao = "\t" + operando2 + " = (" + tipo_res + ") " + $9.label + ";\n";
+                    }
+
+                    string alvo = acessar_simbolo(s) + "[" + t_soma + "]";
+                    string t_op = getempcode(tipo_res);
+                    string op_aritmetica = "\t" + t_op + " = " + alvo + " " + $8.label.at(0) + " " + operando2 + ";\n";
+
+                    $$.traducao = $3.traducao + $6.traducao + $9.traducao + calc_offset + linha_conversao + op_aritmetica + 
+                                "\t" + alvo + " = " + t_op + ";\n";
                 }
 
                 | TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E ';' //atribuição + declaração
