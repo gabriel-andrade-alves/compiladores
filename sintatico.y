@@ -26,7 +26,10 @@ struct simbolo
     string label;
     string tipo;
     string escopo;
-    bool referencia = false; // true = 'label' é, na prática, um char** (parâmetro string por referência)
+    bool referencia = false;
+    bool is_array = false; // identificador para vetores/matrizes
+    int dim1 = 0;          // Tamanho da 1ª dimensão
+    int dim2 = 0;          // Tamanho da 2ª dimensão
 };
 
 // facilita impressão final das declarações
@@ -34,6 +37,8 @@ struct declaracao_aux {
     string tipo;
     string label;
     string id_original;
+    bool is_array = false; 
+    int tamanho_total = 0; // Tamanho linear total (dim1 * dim2)
 };
 
 struct funcao_info {
@@ -118,10 +123,11 @@ string get_new_label();
 
 string gerar_declaracoes_globais();
 string gerar_declaracoes_locais();
+void declarar_array(string nome, string tipo, int dim1, int dim2 = 0);
 string gerar_preambulo();
 
 void declarar_variavel(string nome, string tipo);
-void declarar_parametro(string nome, string tipo);
+void declarar_parametro(string nome, string tipo, bool is_array);
 simbolo buscar_simbolo(string nome);
 string acessar_simbolo(const simbolo& s);
 
@@ -278,8 +284,14 @@ FUNCAO              : TIPO TK_ID '('
                                            + " " + finfo.label + "(";
                         for (size_t i = 0; i < parametros_atual.size(); i++) {
                             if (i > 0) assinatura += ", ";
-                            string tparam = (parametros_atual[i].tipo == "string") 
-                                            ? "char**" : parametros_atual[i].tipo;
+                            
+                            string tparam = parametros_atual[i].tipo;
+                            if (tparam == "string") {
+                                tparam = "char**";
+                            } else if (parametros_atual[i].is_array) {
+                                tparam += "*"; // Se for array, o tipo em C será 'int*', 'float*', etc.
+                            }
+                            
                             assinatura += tparam + " " + parametros_atual[i].label;
                         }
                         assinatura += ")";
@@ -301,13 +313,31 @@ PARAMETROS          : PARAMETROS ',' PARAMETRO
 
 PARAMETRO           : TIPO TK_ID
                     {
-                        declarar_parametro($2.label, $1.tipo);
+                        declarar_parametro($2.label, $1.tipo, false);
+                    }
+                    // Recebendo um Vetor
+                    | TIPO TK_ID '[' ']'
+                    {
+                        declarar_parametro($2.label, $1.tipo, true);
+                    }
+                    // Recebendo uma Matriz
+                    | TIPO TK_ID '[' ']' '[' ']'
+                    {
+                        declarar_parametro($2.label, $1.tipo, true);
                     }
                     ;
 
 DECLARACAO_GLOBAL   : TIPO TK_ID ';'
                     {
                         declarar_variavel($2.label, $1.tipo);
+                    }
+                    | TIPO TK_ID '[' TK_INT ']' ';'
+                    {
+                        declarar_array($2.label, $1.tipo, stoi($4.label));
+                    }
+                    | TIPO TK_ID '[' TK_INT ']' '[' TK_INT ']' ';'
+                    {
+                        declarar_array($2.label, $1.tipo, stoi($4.label), stoi($7.label));
                     }
                     ;
 
@@ -373,6 +403,19 @@ CMD             :TIPO TK_ID ';' //Declaração
                     declarar_variavel($2.label, $1.tipo);
                     $$.traducao = "";
                 }
+                
+                //vetores e matrizes
+                | TIPO TK_ID '[' TK_INT ']' ';' 
+                {
+                    declarar_array($2.label, $1.tipo, stoi($4.label));
+                    $$.traducao = "";
+                }
+                
+                | TIPO TK_ID '[' TK_INT ']' '[' TK_INT ']' ';' 
+                {
+                    declarar_array($2.label, $1.tipo, stoi($4.label), stoi($7.label));
+                    $$.traducao = "";
+                }
 
                 | TK_ID '=' E ';'
                 {
@@ -401,6 +444,51 @@ CMD             :TIPO TK_ID ';' //Declaração
                         }
                         $$.traducao = $3.traducao + linha_conversao + "\t" + alvo + " = " + label_expressao + ";\n";
                     }
+                }
+                
+                | TK_ID '[' E ']' '=' E ';'
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    if (!s.is_array || s.dim2 != 0) { yyerror("Erro: uso incorreto de vetor."); exit(1); }
+                    if ($3.tipo != "int") { yyerror("Erro: indice do vetor deve ser inteiro."); exit(1); }
+                    
+                    string tipo_res = get_tipo_atribuicao(s.tipo, $6.tipo);
+                    if (tipo_res == "erro") { yyerror("Atribuicao invalida no vetor."); exit(1); }
+                    
+                    string operando2 = $6.label;
+                    string linha_conversao = "";
+                    if (s.tipo != $6.tipo) {
+                        operando2 = getempcode(tipo_res);
+                        linha_conversao = "\t" + operando2 + " = (" + tipo_res + ") " + $6.label + ";\n";
+                    }
+                    
+                    $$.traducao = $3.traducao + $6.traducao + linha_conversao + 
+                                "\t" + acessar_simbolo(s) + "[" + $3.label + "] = " + operando2 + ";\n";
+                }
+
+                | TK_ID '[' E ']' '[' E ']' '=' E ';'
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    if (!s.is_array || s.dim2 == 0) { yyerror("Erro: uso incorreto de matriz."); exit(1); }
+                    if ($3.tipo != "int" || $6.tipo != "int") { yyerror("Erro: indices da matriz devem ser inteiros."); exit(1); }
+                    
+                    string tipo_res = get_tipo_atribuicao(s.tipo, $9.tipo);
+                    if (tipo_res == "erro") { yyerror("Atribuicao invalida na matriz."); exit(1); }
+                    
+                    string t_mult = getempcode("int");
+                    string t_soma = getempcode("int");
+                    string calc_offset = "\t" + t_mult + " = " + $3.label + " * " + to_string(s.dim2) + ";\n"
+                                    + "\t" + t_soma + " = " + t_mult + " + " + $6.label + ";\n";
+                    
+                    string operando_val = $9.label;
+                    string linha_conversao = "";
+                    if (s.tipo != $9.tipo) {
+                        operando_val = getempcode(tipo_res);
+                        linha_conversao = "\t" + operando_val + " = (" + tipo_res + ") " + $9.label + ";\n";
+                    }
+                    
+                    $$.traducao = $3.traducao + $6.traducao + $9.traducao + calc_offset + linha_conversao + 
+                                "\t" + acessar_simbolo(s) + "[" + t_soma + "] = " + operando_val + ";\n";
                 }
 
                 | TIPO TK_ID { declarar_variavel($2.label, $1.tipo); } '=' E ';' //atribuição + declaração
@@ -986,6 +1074,36 @@ E               : TK_ID
                     $$.tipo  = simb.tipo;
                     $$.traducao = "";
                 }
+                
+    //Vetores e matrizes
+                
+                | TK_ID '[' E ']'
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    if (!s.is_array || s.dim2 != 0) { yyerror("Erro: uso incorreto de vetor (dimensionalidade)."); exit(1); }
+                    if ($3.tipo != "int") { yyerror("Erro: indice do vetor deve ser inteiro."); exit(1); }
+                    
+                    $$.label = getempcode(s.tipo);
+                    $$.tipo = s.tipo;
+                    $$.traducao = $3.traducao + "\t" + $$.label + " = " + acessar_simbolo(s) + "[" + $3.label + "];\n";
+                }
+                
+                | TK_ID '[' E ']' '[' E ']'
+                {
+                    simbolo s = buscar_simbolo($1.label);
+                    if (!s.is_array || s.dim2 == 0) { yyerror("Erro: uso incorreto de matriz (dimensionalidade)."); exit(1); }
+                    if ($3.tipo != "int" || $6.tipo != "int") { yyerror("Erro: indices da matriz devem ser inteiros."); exit(1); }
+                    
+                    string t_mult = getempcode("int");
+                    string t_soma = getempcode("int");
+                    string calc_offset = "\t" + t_mult + " = " + $3.label + " * " + to_string(s.dim2) + ";\n"
+                                    + "\t" + t_soma + " = " + t_mult + " + " + $6.label + ";\n";
+                                    
+                    $$.label = getempcode(s.tipo);
+                    $$.tipo = s.tipo;
+                    $$.traducao = $3.traducao + $6.traducao + calc_offset + 
+                                "\t" + $$.label + " = " + acessar_simbolo(s) + "[" + t_soma + "];\n";
+                }
 
     /* chamada função */
 
@@ -1570,7 +1688,7 @@ void declarar_variavel(string nome, string tipo){
 }
 
 
-void declarar_parametro(string nome, string tipo){
+void declarar_parametro(string nome, string tipo, bool is_array = false){
     if (tipo == "void") {
         yyerror("Erro: parametro nao pode ser do tipo 'void'.");
         exit(1);
@@ -1584,10 +1702,13 @@ void declarar_parametro(string nome, string tipo){
     s.tipo       = tipo;
     s.label      = "p_" + nome;
     s.escopo     = "parametro";
-    s.referencia = (tipo == "string");   // <-- strings passam por referência
+    s.is_array   = is_array; // Marca na tabela de símbolos que este parâmetro é um array
+    
+    s.referencia = (tipo == "string") && !is_array; 
+    
     pilha_tabelas.back()[nome] = s;
 
-    declaracao_aux d = {tipo, s.label, nome};
+    declaracao_aux d = {tipo, s.label, nome, is_array, 0};
     parametros_atual.push_back(d);
 }
 
@@ -1702,17 +1823,54 @@ string gerar_preambulo() {
     return s;
 }
 
+void declarar_array(string nome, string tipo, int dim1, int dim2) {
+    if (tipo == "void") {
+        yyerror("Erro: array nao pode ser do tipo 'void'."); exit(1);
+    }
+    if(pilha_tabelas.back().count(nome)){
+        yyerror("Erro: Variável \"" + nome + "\" já declarada neste escopo"); exit(1);
+    }
+    
+    simbolo simb;
+    simb.tipo = tipo;
+    simb.is_array = true;
+    simb.dim1 = dim1;
+    simb.dim2 = dim2;
+    int tamanho_total = (dim2 == 0) ? dim1 : (dim1 * dim2); // Mapeamento linear
+
+    if (pilha_tabelas.size() == 1) {
+        simb.label = "g_" + nome;
+        simb.escopo = "global";
+        pilha_tabelas.back()[nome] = simb;
+        declaracao_aux decl = {tipo, simb.label, nome, true, tamanho_total};
+        todas_variaveis_globais.push_back(decl);
+    } else {
+        simb.label = "u_" + nome + "_escopo" + to_string(contador_escopos);
+        simb.escopo = "local";
+        pilha_tabelas.back()[nome] = simb;
+        declaracao_aux decl = {tipo, simb.label, nome, true, tamanho_total};
+        todas_variaveis_locais.push_back(decl);
+    }
+}
+
 string gerar_declaracoes_globais(){
     string texto = "";
     for(auto const& decl : todas_variaveis_globais) {
-        if(decl.tipo == "string") {
-            texto += "char* " + decl.label + " = NULL; // global user:" + decl.id_original + "\n";
+        if(decl.is_array) {
+            if(decl.tipo == "string") 
+                texto += "char* " + decl.label + "[" + to_string(decl.tamanho_total) + "]; // global user:" + decl.id_original + "\n";
+            else 
+                texto += decl.tipo + " " + decl.label + "[" + to_string(decl.tamanho_total) + "]; // global user:" + decl.id_original + "\n";
         } else {
-            string inicializacao = " = 0;";
-            if(decl.tipo == "float") inicializacao = " = 0.0;";
-            else if(decl.tipo == "bool") inicializacao = " = false;";
-            else if(decl.tipo == "char") inicializacao = " = ' ';";
-            texto += decl.tipo + " " + decl.label + inicializacao + " // global user:" + decl.id_original + "\n";
+            if(decl.tipo == "string") {
+                texto += "char* " + decl.label + " = NULL; // global user:" + decl.id_original + "\n";
+            } else {
+                string inicializacao = " = 0;";
+                if(decl.tipo == "float") inicializacao = " = 0.0;";
+                else if(decl.tipo == "bool") inicializacao = " = false;";
+                else if(decl.tipo == "char") inicializacao = " = ' ';";
+                texto += decl.tipo + " " + decl.label + inicializacao + " // global user:" + decl.id_original + "\n";
+            }
         }
     }
     return texto;
@@ -1722,10 +1880,17 @@ string gerar_declaracoes_locais(){
     string texto = "";
     
     for(auto const& decl : todas_variaveis_locais) {
-        if(decl.tipo == "string")
-            texto += "\tchar* " + decl.label + "; // local user:" + decl.id_original + "\n";
-        else
-            texto += "\t" + decl.tipo + " " + decl.label + "; // local user:" + decl.id_original + "\n";
+            if(decl.is_array) {
+                if(decl.tipo == "string") 
+                    texto += "\tchar* " + decl.label + "[" + to_string(decl.tamanho_total) + "]; // local user:" + decl.id_original + "\n";
+                else 
+                    texto += "\t" + decl.tipo + " " + decl.label + "[" + to_string(decl.tamanho_total) + "]; // local user:" + decl.id_original + "\n";
+            } else {
+                if(decl.tipo == "string")
+                    texto += "\tchar* " + decl.label + "; // local user:" + decl.id_original + "\n";
+                else
+                    texto += "\t" + decl.tipo + " " + decl.label + "; // local user:" + decl.id_original + "\n";
+            }
     }
 
     for(int i = 1; i <= (int)tipos_temporarios.size(); i++){
@@ -1737,6 +1902,33 @@ string gerar_declaracoes_locais(){
     }
 
     for(auto const& decl : todas_variaveis_locais) {
+        if (decl.is_array) {
+            // Define o valor padrão com base no tipo
+            string valor_init = "0";
+            if(decl.tipo == "float") valor_init = "0.0";
+            else if(decl.tipo == "bool") valor_init = "false";
+            else if(decl.tipo == "char") valor_init = "' '";
+            else if(decl.tipo == "string") valor_init = "NULL";
+
+            string iterador = "_i_" + decl.label;
+            string label_inicio = "L_init_start_" + decl.label;
+            string label_fim = "L_init_end_" + decl.label;
+
+            texto += "\n\t// Inicialização do array " + decl.id_original + "\n";
+
+            texto += "\tint " + iterador + " = 0;\n";
+            
+            texto += "\t" + label_inicio + ":\n";
+            texto += "\tif (" + iterador + " >= " + to_string(decl.tamanho_total) + ") goto " + label_fim + ";\n";
+            texto += "\t" + decl.label + "[" + iterador + "] = " + valor_init + ";\n";
+            texto += "\t" + iterador + " = " + iterador + " + 1;\n";
+            texto += "\tgoto " + label_inicio + ";\n";
+            texto += "\t" + label_fim + ":\n";
+            
+            continue;
+        }
+
+        texto += "\n\t// Inicialização da variável " + decl.id_original + "\n";
         if(decl.tipo == "int")
             texto += "\t" + decl.label + " = 0;\n";
         else if(decl.tipo == "float")

@@ -75,7 +75,7 @@ STRING \"[^\"]*\"
 "="             {return *yytext; }
 ";"             {return *yytext; }
 ","             {return *yytext; }
-[(){}]          {return *yytext; }
+[(){}\[\]]          {return *yytext; }
 
 
         /* Operadores aritméticos*/
