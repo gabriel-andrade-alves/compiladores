@@ -49,14 +49,11 @@ struct funcao_info {
 
 unordered_map<string, funcao_info> tabela_funcoes;
 
-// dados da função sendo compilada no momento (não há funções aninhadas,
-// então não precisa ser uma pilha)
 string tipo_retorno_atual;
 
-// parâmetros coletados durante o parsing do cabeçalho da função atual
 vector<declaracao_aux> parametros_atual;
 
-// protótipos (forward declarations) e corpos das funções já compiladas
+// protótipos e corpos das funções já compiladas
 vector<string> prototipos_funcoes;
 string codigo_funcoes;
 
@@ -68,7 +65,6 @@ vector<string> tipos_temporarios;
 
 //pilha de mapas para escopo
 vector<unordered_map<string, simbolo>> pilha_tabelas;
-
 
 //pilha para labels para o break e continue
 vector<string> pilha_break;
@@ -114,8 +110,6 @@ map<string, int> tipo_para_id = {
     {"void",   5}
 };
 
-
-
 int yylex(void);
 int yyerror(string);
 string getempcode(string tipo);
@@ -144,14 +138,12 @@ string get_tipo_atribuicao(string t1, string t2) {
 string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string &label_out2, string &tipo_res);
 %}
 
-
 //Literais
 %token TK_INT
 %token TK_FLOAT
 %token TK_CHAR
 %token TK_BOOL
 %token TK_STRING
-
 
 //Tipos
 %token TK_TIPO_INT
@@ -161,10 +153,8 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_TIPO_STRING
 %token TK_TIPO_VOID
 
-
 //Identificador
 %token TK_ID
-
 
 //Relacional
 %token TK_REL
@@ -174,7 +164,6 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 //Logicos
 %token TK_AND TK_OR
 
-
 // Precedência
 %left TK_OR
 %left TK_AND
@@ -182,21 +171,19 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %left TK_REL
 %left '+' '-'
 %left '*' '/'
+%right TK_POW
 %right UMINUS
 %right CAST_PREC
 %right '!'
 %right TK_INC TK_DEC
 
-
 %nonassoc IF_SEM_ELSE
 %nonassoc TK_ELSE
-
 
 //comandos
 %token TK_IMPRIME
 %token TK_LER
 %token TK_RETURN
-
 
 //condicionais
 %token TK_IF
@@ -208,12 +195,10 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_DEFAULT
 %token TK_PONTOS
 
-
 //Repetição
 %token TK_WHILE
 %token TK_DO
 %token TK_FOR
-
 
 //Controles de laço de repetição
 %token TK_BREAK
@@ -225,6 +210,9 @@ string aplicar_coercao(atributos &e1, atributos &e2, string &label_out1, string 
 %token TK_MENOS_IGUAL
 %token TK_VEZES_IGUAL
 %token TK_DIV_IGUAL
+
+// Exponenciação
+%token TK_POW
 
 %start S
 
@@ -320,12 +308,10 @@ PARAMETRO           : TIPO TK_ID
                     {
                         declarar_parametro($2.label, $1.tipo, false);
                     }
-                    // Recebendo um Vetor
                     | TIPO TK_ID '[' ']'
                     {
                         declarar_parametro($2.label, $1.tipo, true);
                     }
-                    // Recebendo uma Matriz
                     | TIPO TK_ID '[' ']' '[' ']'
                     {
                         declarar_parametro($2.label, $1.tipo, true);
@@ -526,11 +512,9 @@ CMD             :TIPO TK_ID ';' //Declaração
                         linha_conversao = "\t" + operando2 + " = (" + tipo_res + ") " + $3.label + ";\n";
                     }
 
-                    // Gera a operacao base (ex: t1 = alvo + op2)
                     string t_op = getempcode(tipo_res);
                     string op_aritmetica = "\t" + t_op + " = " + alvo + " " + $2.label.at(0) + " " + operando2 + ";\n";
 
-                    // Atribui o temporário de volta ao alvo (ex: alvo = t1)
                     $$.traducao = $3.traducao + linha_conversao + op_aritmetica + "\t" + alvo + " = " + t_op + ";\n";
                 }
 
@@ -634,7 +618,7 @@ CMD             :TIPO TK_ID ';' //Declaração
                 }
     /* return */
 
-|                TK_RETURN E ';'
+                | TK_RETURN E ';'
                 {
                     if (tipo_retorno_atual == "void") {
                         yyerror("Erro: funcao void nao pode retornar um valor.");
@@ -670,10 +654,8 @@ CMD             :TIPO TK_ID ';' //Declaração
     /*  Comandos de impressão e leitura  */
                 | TK_IMPRIME '(' ARGUMENTOS ')' ';' 
                 {
-                    // Encontra a posição do caractere especial '|' enviado por ARGUMENTOS
                     size_t pos = $3.label.find('|');
                     
-                    // Separa o que está antes (formatos) do que está depois (variáveis)
                     string formatos = $3.label.substr(0, pos);
                     string variaveis = $3.label.substr(pos + 1);
 
@@ -1164,8 +1146,8 @@ ARG         :   E
                     else if($1.tipo == "bool")  formato = "%d";
                     else if($1.tipo == "string") formato = "%s";
                     
-                    $$.traducao = $1.traducao; // Código intermediário gerado em E (ex: t1=2; t2=t1/b...)
-                    $$.label = formato + "|" + $1.label; // "ex: %d|t3"
+                    $$.traducao = $1.traducao;
+                    $$.label = formato + "|" + $1.label;
                 }
                 ;
 
@@ -1177,7 +1159,7 @@ ARG         :   E
 E               : TK_ID
                 {
                     simbolo simb = buscar_simbolo($1.label);
-                    $$.label = acessar_simbolo(simb);   // antes era: simb.label
+                    $$.label = acessar_simbolo(simb); 
                     $$.tipo  = simb.tipo;
                     $$.traducao = "";
                 }
@@ -1332,7 +1314,6 @@ E               : TK_ID
 
                     if (tipo_resultante == "string") {
                         // Concatenação: string+string, string+char, char+string, char+char
-                        // Precisamos de buffers temporários de char* para os dois operandos
                         string op1_ptr = $1.label;
                         string op2_ptr = $3.label;
                         string trad_conv = $1.traducao + $3.traducao;
@@ -1370,7 +1351,7 @@ E               : TK_ID
 
                         $$.label    = tresult;
                         $$.tipo     = "string";
-                        $$.tamanho  = 0; // tamanho dinâmico; calculado em runtime
+                        $$.tamanho  = 0; // tamanho dinâmico
                         $$.traducao = trad_conv;
                     } else {
                         string linha_conversao = "";
@@ -1453,6 +1434,48 @@ E               : TK_ID
                     $$.tipo = tipo_resultante;
                     $$.traducao = $1.traducao + $3.traducao + linha_conversao + 
                         "\t" + $$.label + " = " + operando1 + " / " + operando2 + ";\n";
+                }
+
+    /*    Exponenciação    */
+                | E TK_POW E
+                {
+                    // Só permite int e float como base e expoente
+                    if (($1.tipo != "int" && $1.tipo != "float") ||
+                        ($3.tipo != "int" && $3.tipo != "float")) {
+                        yyerror("Erro: operador ^ so pode ser usado com int ou float.");
+                        exit(1);
+                    }
+
+                    // int ^ int : __pow_int (aborta em tempo de execução se expoente negativo)
+                    if ($1.tipo == "int" && $3.tipo == "int") {
+                        string tresult = getempcode("int");
+                        $$.label    = tresult;
+                        $$.tipo     = "int";
+                        $$.traducao = $1.traducao + $3.traducao
+                                    + "\t" + tresult + " = __pow_int(" + $1.label + ", " + $3.label + ");\n";
+                    } else {
+                        // Qualquer combinação com float : __pow_float
+                        string base_label = $1.label;
+                        string exp_label  = $3.label;
+                        string trad_conv  = $1.traducao + $3.traducao;
+
+                        if ($1.tipo == "int") {
+                            string tc = getempcode("float");
+                            trad_conv  += "\t" + tc + " = (float) " + $1.label + ";\n";
+                            base_label  = tc;
+                        }
+                        if ($3.tipo == "int") {
+                            string tc = getempcode("float");
+                            trad_conv  += "\t" + tc + " = (float) " + $3.label + ";\n";
+                            exp_label   = tc;
+                        }
+
+                        string tresult = getempcode("float");
+                        $$.label    = tresult;
+                        $$.tipo     = "float";
+                        $$.traducao = trad_conv
+                                    + "\t" + tresult + " = __pow_float(" + base_label + ", " + exp_label + ");\n";
+                    }
                 }
 
     /*  Operadores unários    */
@@ -1765,7 +1788,7 @@ void declarar_variavel(string nome, string tipo){
     }
 
 
-    // Checa duplicidade apenas no escopo atual
+    // Checa duplicidade no escopo atual
     if(pilha_tabelas.back().count(nome)){
         yyerror("Erro: Variável \"" + nome + "\" já declarada neste escopo");
         exit(1);
@@ -1890,6 +1913,118 @@ string gerar_preambulo() {
     s += "\treturn 0;\n";
     s += "}\n";
     s += "\n";
+
+    /* ---- exponenciação inteira: base^exp — aborta se exp < 0 ---- */
+    s += "int __pow_int(int base, int exp) {\n";
+    s += "\tint resultado;\n";
+    s += "\tint i;\n";
+    s += "\tbool neg;\n";
+    s += "\tbool zero;\n";
+    s += "\tresultado = 1;\n";
+    s += "\tneg = exp < 0;\n";
+    s += "\tif (neg) goto L_pi_neg_exp;\n";
+    s += "\tzero = exp == 0;\n";
+    s += "\tif (zero) goto L_pi_done;\n";
+    s += "\ti = 0;\n";
+    s += "\tL_pi_loop:\n";
+    s += "\tzero = i >= exp;\n";
+    s += "\tif (zero) goto L_pi_done;\n";
+    s += "\tresultado = resultado * base;\n";
+    s += "\ti = i + 1;\n";
+    s += "\tgoto L_pi_loop;\n";
+    s += "\tL_pi_neg_exp:\n";
+    s += "\tfprintf(stderr, \"Erro em tempo de execucao: expoente negativo em exponenciacao inteira (int ^ int). Use float para expoentes negativos.\\n\");\n";
+    s += "\texit(1);\n";
+    s += "\tL_pi_done:\n";
+    s += "\treturn resultado;\n";
+    s += "}\n\n";
+
+    s += "float __ln_float(float x) {\n";
+    s += "\tfloat u;\n";
+    s += "\tfloat u2;\n";
+    s += "\tfloat term;\n";
+    s += "\tfloat soma;\n";
+    s += "\tfloat k;\n";
+    s += "\tfloat diff;\n";
+    s += "\tfloat absd;\n";
+    s += "\tbool cond;\n";
+    s += "\tint iter;\n";
+    s += "\tu = (x - 1.0) / (x + 1.0);\n";
+    s += "\tu2 = u * u;\n";
+    s += "\tterm = u;\n";
+    s += "\tsoma = u;\n";
+    s += "\tk = 3.0;\n";
+    s += "\titer = 0;\n";
+    s += "\tL_ln_loop:\n";
+    s += "\tcond = iter >= 60;\n";
+    s += "\tif (cond) goto L_ln_done;\n";
+    s += "\tterm = term * u2;\n";
+    s += "\tsoma = soma + term / k;\n";
+    s += "\tk = k + 2.0;\n";
+    s += "\titer = iter + 1;\n";
+    s += "\tgoto L_ln_loop;\n";
+    s += "\tL_ln_done:\n";
+    s += "\tsoma = soma * 2.0;\n";
+    s += "\treturn soma;\n";
+    s += "}\n\n";
+
+    /* exp(x) via série de Taylor: e^x = 1 + x + x^2/2! + x^3/3! + ... */
+    s += "float __exp_float(float x) {\n";
+    s += "\tfloat soma;\n";
+    s += "\tfloat term;\n";
+    s += "\tint i;\n";
+    s += "\tbool cond;\n";
+    s += "\tsoma = 1.0;\n";
+    s += "\tterm = 1.0;\n";
+    s += "\ti = 1;\n";
+    s += "\tL_exp_loop:\n";
+    s += "\tcond = i > 60;\n";
+    s += "\tif (cond) goto L_exp_done;\n";
+    s += "\tterm = term * x / (float) i;\n";
+    s += "\tsoma = soma + term;\n";
+    s += "\ti = i + 1;\n";
+    s += "\tgoto L_exp_loop;\n";
+    s += "\tL_exp_done:\n";
+    s += "\treturn soma;\n";
+    s += "}\n\n";
+
+    /* base^exp = exp(exp * ln(base))  —  trata base<=0 e exp inteiro negativo */
+    s += "float __pow_float(float base, float exp) {\n";
+    s += "\tfloat resultado;\n";
+    s += "\tfloat ln_base;\n";
+    s += "\tbool base_zero;\n";
+    s += "\tbool base_neg;\n";
+    s += "\tbase_zero = base == 0.0;\n";
+    s += "\tif (base_zero) goto L_pf_zero;\n";
+    s += "\tbase_neg = base < 0.0;\n";
+    s += "\tif (base_neg) goto L_pf_neg_base;\n";
+    s += "\tln_base = __ln_float(base);\n";
+    s += "\tresultado = __exp_float(exp * ln_base);\n";
+    s += "\tgoto L_pf_done;\n";
+    s += "\tL_pf_zero:\n";
+    s += "\tresultado = 0.0;\n";
+    s += "\tgoto L_pf_done;\n";
+    s += "\tL_pf_neg_base:\n";
+    /* Para base negativa: (-b)^n = (-1)^n * b^n  — só funciona bem com exp inteiro */
+    s += "\t{\n";
+    s += "\t\tfloat abs_base;\n";
+    s += "\t\tint exp_int;\n";
+    s += "\t\tint mod2;\n";
+    s += "\t\tfloat sinal;\n";
+    s += "\t\tabs_base = -base;\n";
+    s += "\t\tln_base = __ln_float(abs_base);\n";
+    s += "\t\tresultado = __exp_float(exp * ln_base);\n";
+    s += "\t\texp_int = (int) exp;\n";
+    s += "\t\tmod2 = exp_int % 2;\n";
+    s += "\t\tsinal = 1.0;\n";
+    s += "\t\tif (!mod2) goto L_pf_pos_sinal;\n";
+    s += "\t\tsinal = -1.0;\n";
+    s += "\t\tL_pf_pos_sinal:\n";
+    s += "\t\tresultado = resultado * sinal;\n";
+    s += "\t}\n";
+    s += "\tL_pf_done:\n";
+    s += "\treturn resultado;\n";
+    s += "}\n\n";
 
     s += "char* __str_read() {\n";
     s += "\tint cap;\n";

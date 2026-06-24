@@ -79,6 +79,7 @@ STRING \"[^\"]*\"
 
 
         /* Operadores aritméticos*/
+"^"            { return TK_POW; }
 "+"             { return *yytext; }
 "-"             { return *yytext; }
 "*"             { return *yytext; }
